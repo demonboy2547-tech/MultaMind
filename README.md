@@ -1,5 +1,5 @@
-# Firebase Studio
+# MultaMind
 
-This is a NextJS starter in Firebase Studio.
+A minimalist chat interface to interact with and compare responses from GPT and Gemini AI models.
 
-To get started, take a look at src/app/page.tsx.
+Built with Next.js, TypeScript, and Tailwind CSS.

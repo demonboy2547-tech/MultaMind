@@ -1,0 +1,168 @@
+'use client';
+
+import { useState, useMemo } from 'react';
+import type { FormEvent } from 'react';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { Logo } from '@/components/ui/Logo';
+import { useToast } from "@/hooks/use-toast";
+import type { ChatMessage, Agent } from '@/lib/types';
+import { callGptAgent, callGeminiAgent } from '@/lib/agents';
+import { critiqueGptResponse } from '@/ai/flows/critique-gpt-response';
+import { summarizeResponses } from '@/ai/flows/summarize-responses';
+import ChatColumn from './ChatColumn';
+import ChatInput from './ChatInput';
+
+export default function ChatLayout() {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState('');
+  const [isGptTyping, setGptTyping] = useState(false);
+  const [isGeminiTyping, setGeminiTyping] = useState(false);
+  const isMobile = useIsMobile();
+  const { toast } = useToast();
+
+  const handleSendMessage = async (e: FormEvent) => {
+    e.preventDefault();
+    const messageText = input.trim();
+    if (!messageText) return;
+
+    const userMessage: ChatMessage = { id: `user-${Date.now()}`, agent: 'user', text: messageText };
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+
+    const [command, ...args] = messageText.split(' ');
+
+    if (command.startsWith('/')) {
+      await handleSlashCommand(command, args.join(' '));
+    } else {
+      await handleDualAgentQuery(messageText);
+    }
+  };
+
+  const handleSlashCommand = async (command: string, rest: string) => {
+    switch (command) {
+      case '/gpt':
+        setGptTyping(true);
+        const gptResponse = await callGptAgent(rest);
+        setMessages(prev => [...prev, { id: `gpt-${Date.now()}`, agent: 'gpt', text: gptResponse }]);
+        setGptTyping(false);
+        break;
+      case '/gemini':
+        setGeminiTyping(true);
+        const geminiResponse = await callGeminiAgent(rest);
+        setMessages(prev => [...prev, { id: `gemini-${Date.now()}`, agent: 'gemini', text: geminiResponse }]);
+        setGeminiTyping(false);
+        break;
+      case '/review':
+        const lastGptMessage = [...messages].reverse().find(m => m.agent === 'gpt');
+        if (lastGptMessage) {
+          setGeminiTyping(true);
+          try {
+            const result = await critiqueGptResponse({ gptResponse: lastGptMessage.text });
+            const critique = `**Review of last GPT response:**\n\n${result.critique}`;
+            setMessages(prev => [...prev, { id: `gemini-critique-${Date.now()}`, agent: 'gemini', text: critique }]);
+          } catch (error) {
+            toast({ variant: "destructive", title: "Error", description: "Failed to get critique." });
+          } finally {
+            setGeminiTyping(false);
+          }
+        } else {
+          setMessages(prev => [...prev, { id: `system-${Date.now()}`, agent: 'system', text: "No GPT response found to review." }]);
+        }
+        break;
+      case '/summarize':
+        const lastGpt = [...messages].reverse().find(m => m.agent === 'gpt');
+        const lastGemini = [...messages].reverse().find(m => m.agent === 'gemini');
+        if (lastGpt && lastGemini) {
+          setMessages(prev => [...prev, { id: `system-typing-${Date.now()}`, agent: 'system', text: 'Summarizing...', isTyping: true }]);
+          try {
+            const result = await summarizeResponses({ gptResponse: lastGpt.text, geminiResponse: lastGemini.text });
+            setMessages(prev => prev.filter(m => m.id !== `system-typing-${Date.now()}`));
+            setMessages(prev => [...prev, { id: `summary-${Date.now()}`, agent: 'system', text: `**Summary of last responses:**\n\n${result.summary}` }]);
+          } catch (error) {
+            setMessages(prev => prev.filter(m => m.id !== `system-typing-${Date.now()}`));
+            toast({ variant: "destructive", title: "Error", description: "Failed to summarize." });
+          }
+        } else {
+          setMessages(prev => [...prev, { id: `system-${Date.now()}`, agent: 'system', text: "A response from both GPT and Gemini is needed to summarize." }]);
+        }
+        break;
+      default:
+        setMessages(prev => [...prev, { id: `system-${Date.now()}`, agent: 'system', text: `Unknown command: ${command}` }]);
+    }
+  };
+
+  const handleDualAgentQuery = async (messageText: string) => {
+    setGptTyping(true);
+    setGeminiTyping(true);
+    
+    const [gptResponse, geminiResponse] = await Promise.all([
+      callGptAgent(messageText),
+      callGeminiAgent(messageText)
+    ]);
+
+    setMessages(prev => [
+      ...prev,
+      { id: `gpt-${Date.now()}`, agent: 'gpt', text: gptResponse },
+      { id: `gemini-${Date.now() + 1}`, agent: 'gemini', text: geminiResponse }
+    ]);
+    
+    setGptTyping(false);
+    setGeminiTyping(false);
+  };
+  
+  const filterMessages = (agent: Agent) => messages.filter(m => m.agent === agent || m.agent === 'user' || m.agent === 'system');
+  
+  const gptMessages = useMemo(() => filterMessages('gpt'), [messages]);
+  const geminiMessages = useMemo(() => filterMessages('gemini'), [messages]);
+
+  const renderColumns = () => (
+    <>
+      <ChatColumn title="GPT" messages={gptMessages} isTyping={isGptTyping} />
+      <Separator orientation={isMobile ? 'horizontal' : 'vertical'} />
+      <ChatColumn title="Gemini" messages={geminiMessages} isTyping={isGeminiTyping} />
+    </>
+  );
+
+  return (
+    <div className="flex flex-col h-screen bg-background text-foreground">
+      <header className="flex items-center justify-between p-4 border-b">
+        <Logo />
+      </header>
+      
+      <main className="flex-1 overflow-hidden">
+        {isMobile ? (
+          <Tabs defaultValue="gpt" className="h-full flex flex-col">
+            <TabsList className="grid w-full grid-cols-2 bg-card rounded-none border-b">
+              <TabsTrigger value="gpt">GPT</TabsTrigger>
+              <TabsTrigger value="gemini">Gemini</TabsTrigger>
+            </TabsList>
+            <TabsContent value="gpt" className="flex-1 overflow-y-auto mt-0">
+               <ChatColumn title="GPT" messages={gptMessages} isTyping={isGptTyping} />
+            </TabsContent>
+            <TabsContent value="gemini" className="flex-1 overflow-y-auto mt-0">
+               <ChatColumn title="Gemini" messages={geminiMessages} isTyping={isGeminiTyping} />
+            </TabsContent>
+          </Tabs>
+        ) : (
+          <div className="grid grid-cols-[1fr_auto_1fr] h-full">
+            {renderColumns()}
+          </div>
+        )}
+      </main>
+
+      <footer className="p-4 bg-background">
+        <Card className="p-2">
+            <ChatInput 
+                input={input} 
+                setInput={setInput} 
+                onSendMessage={handleSendMessage}
+                isTyping={isGptTyping || isGeminiTyping}
+            />
+        </Card>
+      </footer>
+    </div>
+  );
+}
