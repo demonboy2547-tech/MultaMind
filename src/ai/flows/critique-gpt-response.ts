@@ -1,15 +1,16 @@
 'use server';
 
 /**
- * @fileOverview A flow that allows Gemini to critique the last GPT response.
+ * @fileOverview A flow that allows the 'multa' agent to critique the last GPT response.
  *
- * - critiqueGptResponse - A function that takes the last GPT response and returns Gemini's critique.
+ * - critiqueGptResponse - A function that takes the last GPT response and returns a critique.
  * - CritiqueGptResponseInput - The input type for the critiqueGptResponse function.
  * - CritiqueGptResponseOutput - The return type for the critiqueGptResponse function.
  */
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import {MODELS} from '@/lib/models';
 
 const CritiqueGptResponseInputSchema = z.object({
   gptResponse: z
@@ -22,7 +23,7 @@ const CritiqueGptResponseOutputSchema = z.object({
   critique: z
     .string()
     .describe(
-      'Gemini’s critical analysis of the GPT response, highlighting potential flaws, biases, or areas for improvement.'
+      'A critical analysis of the GPT response, highlighting potential flaws, biases, or areas for improvement.'
     ),
 });
 export type CritiqueGptResponseOutput = z.infer<typeof CritiqueGptResponseOutputSchema>;
@@ -39,11 +40,12 @@ const prompt = ai.definePrompt({
   output: {schema: CritiqueGptResponseOutputSchema},
   prompt: `You are an expert AI assistant specializing in critically analyzing the responses of other AI models.
 
-You will be provided with a response from a GPT model. Your task is to provide a detailed critique of this response, highlighting any potential flaws, biases, areas for improvement, or factual inaccuracies.
+You will be provided with a response from a language model. Your task is to provide a detailed critique of this response, highlighting any potential flaws, biases, areas for improvement, or factual inaccuracies.
 
-GPT Response: {{{gptResponse}}}
+Model Response: {{{gptResponse}}}
 
 Critique:`,
+  model: MODELS.multa
 });
 
 const critiqueGptResponseFlow = ai.defineFlow(

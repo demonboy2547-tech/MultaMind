@@ -10,6 +10,7 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import {MODELS} from '@/lib/models';
 
 const SummarizeResponsesInputSchema = z.object({
   gptResponse: z.string().describe('The most recent response from the GPT agent.'),
@@ -30,13 +31,14 @@ const summarizeResponsesPrompt = ai.definePrompt({
   name: 'summarizeResponsesPrompt',
   input: {schema: SummarizeResponsesInputSchema},
   output: {schema: SummarizeResponsesOutputSchema},
-  prompt: `Summarize the key insights from the following GPT and Gemini responses:
+  prompt: `Summarize the key insights from the following two language model responses:
 
-GPT Response: {{{gptResponse}}}
+Response 1: {{{gptResponse}}}
 
-Gemini Response: {{{geminiResponse}}}
+Response 2: {{{geminiResponse}}}
 
 Provide a concise summary that captures the main points from both responses.`,
+  model: MODELS.multa,
 });
 
 const summarizeResponsesFlow = ai.defineFlow(
