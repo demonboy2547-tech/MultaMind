@@ -10,8 +10,8 @@ import { Logo } from '@/components/ui/Logo';
 import { useToast } from "@/hooks/use-toast";
 import type { ChatMessage, Agent } from '@/lib/types';
 import { callGptAgent, callGeminiAgent } from '@/lib/agents';
-import { critiqueGptResponse } from '@/ai/flows/critique-gpt-response';
 import { summarizeResponses } from '@/ai/flows/summarize-responses';
+import { reviewGptWithGemini } from '@/lib/review';
 import ChatColumn from './ChatColumn';
 import ChatInput from './ChatInput';
 
@@ -60,21 +60,14 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
         setGeminiTyping(false);
         break;
       case '/review':
-        const lastGptMessage = [...messages].reverse().find(m => m.author === 'gpt');
-        if (lastGptMessage) {
-          setGeminiTyping(true);
-          try {
-            // @ts-ignore - plan is passed to the flow but not explicitly typed in the function signature for now
-            const result = await critiqueGptResponse({ gptResponse: lastGptMessage.content }, plan);
-            const critique = `**Review of last GPT response:**\n\n${result.critique}`;
-            setMessages(prev => [...prev, { id: `gemini-critique-${Date.now()}`, author: 'gemini', content: critique }]);
-          } catch (error) {
-            toast({ variant: "destructive", title: "Error", description: "Failed to get critique." });
-          } finally {
-            setGeminiTyping(false);
-          }
-        } else {
-          setMessages(prev => [...prev, { id: `multa-${Date.now()}`, author: 'multa', content: "No GPT response found to review." }]);
+        setGeminiTyping(true);
+        try {
+          const reviewMessage = await reviewGptWithGemini(messages, plan);
+          setMessages(prev => [...prev, { ...reviewMessage, id: `gemini-review-${Date.now()}` }]);
+        } catch (error) {
+          toast({ variant: "destructive", title: "Error", description: "Failed to get review." });
+        } finally {
+          setGeminiTyping(false);
         }
         break;
       case '/summarize':

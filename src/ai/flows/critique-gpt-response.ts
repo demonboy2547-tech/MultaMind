@@ -2,7 +2,11 @@
 
 // src/ai/flows/critique-gpt-response.ts
 import { callMultaAgent } from '@/lib/agents';
+import { ChatMessage } from '@/lib/types';
 
+/**
+ * @deprecated This flow is deprecated and will be removed. Use `reviewGptWithGemini` from `src/lib/review.ts` instead.
+ */
 export async function critiqueGptResponse(
   params: { gptResponse: string },
   plan: 'free' | 'pro' = 'free'
