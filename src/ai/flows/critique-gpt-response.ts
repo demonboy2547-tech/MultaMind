@@ -1,61 +1,31 @@
 'use server';
 
-/**
- * @fileOverview A flow that allows the 'multa' agent to critique the last GPT response.
- *
- * - critiqueGptResponse - A function that takes the last GPT response and returns a critique.
- * - CritiqueGptResponseInput - The input type for the critiqueGptResponse function.
- * - CritiqueGptResponseOutput - The return type for the critiqueGptResponse function.
- */
-
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
-import {MODELS} from '@/lib/models';
-
-const CritiqueGptResponseInputSchema = z.object({
-  gptResponse: z
-    .string()
-    .describe('The most recent response from the GPT agent.'),
-});
-export type CritiqueGptResponseInput = z.infer<typeof CritiqueGptResponseInputSchema>;
-
-const CritiqueGptResponseOutputSchema = z.object({
-  critique: z
-    .string()
-    .describe(
-      'A critical analysis of the GPT response, highlighting potential flaws, biases, or areas for improvement.'
-    ),
-});
-export type CritiqueGptResponseOutput = z.infer<typeof CritiqueGptResponseOutputSchema>;
+// src/ai/flows/critique-gpt-response.ts
+import { callMultaAgent } from '@/lib/agents';
 
 export async function critiqueGptResponse(
-  input: CritiqueGptResponseInput
-): Promise<CritiqueGptResponseOutput> {
-  return critiqueGptResponseFlow(input);
+  params: { gptResponse: string },
+  plan: 'free' | 'pro' = 'free'
+): Promise<{ critique: string }> {
+  const { gptResponse } = params;
+
+  // In this case, there is no Gemini answer.
+  // We'll have Multa act as a quality reviewer for the GPT response.
+  const prompt = `You are Multa, an expert AI reviewer.
+You will critically review the following GPT answer for clarity, correctness, and practicality.
+Point out strengths, weaknesses, and possible improvements.
+
+GPT answer:
+${gptResponse}`;
+
+  const critique = await callMultaAgent(
+    {
+      question: 'Please critique the GPT answer above.',
+      gptAnswer: gptResponse,
+      geminiAnswer: '', // No Gemini answer available for this flow
+    },
+    plan
+  );
+
+  return { critique };
 }
-
-const prompt = ai.definePrompt({
-  name: 'critiqueGptResponsePrompt',
-  input: {schema: CritiqueGptResponseInputSchema},
-  output: {schema: CritiqueGptResponseOutputSchema},
-  prompt: `You are an expert AI assistant specializing in critically analyzing the responses of other AI models.
-
-You will be provided with a response from a language model. Your task is to provide a detailed critique of this response, highlighting any potential flaws, biases, areas for improvement, or factual inaccuracies.
-
-Model Response: {{{gptResponse}}}
-
-Critique:`,
-  model: MODELS.multa
-});
-
-const critiqueGptResponseFlow = ai.defineFlow(
-  {
-    name: 'critiqueGptResponseFlow',
-    inputSchema: CritiqueGptResponseInputSchema,
-    outputSchema: CritiqueGptResponseOutputSchema,
-  },
-  async input => {
-    const {output} = await prompt(input);
-    return output!;
-  }
-);

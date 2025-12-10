@@ -15,7 +15,11 @@ import { summarizeResponses } from '@/ai/flows/summarize-responses';
 import ChatColumn from './ChatColumn';
 import ChatInput from './ChatInput';
 
-export default function ChatLayout() {
+interface ChatLayoutProps {
+  plan: 'free' | 'pro';
+}
+
+export default function ChatLayout({ plan }: ChatLayoutProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isGptTyping, setGptTyping] = useState(false);
@@ -45,13 +49,13 @@ export default function ChatLayout() {
     switch (command) {
       case '/gpt':
         setGptTyping(true);
-        const gptResponse = await callGptAgent(rest);
+        const gptResponse = await callGptAgent(rest, plan);
         setMessages(prev => [...prev, { id: `gpt-${Date.now()}`, agent: 'gpt', text: gptResponse }]);
         setGptTyping(false);
         break;
       case '/gemini':
         setGeminiTyping(true);
-        const geminiResponse = await callGeminiAgent(rest);
+        const geminiResponse = await callGeminiAgent(rest, plan);
         setMessages(prev => [...prev, { id: `gemini-${Date.now()}`, agent: 'gemini', text: geminiResponse }]);
         setGeminiTyping(false);
         break;
@@ -60,7 +64,8 @@ export default function ChatLayout() {
         if (lastGptMessage) {
           setGeminiTyping(true);
           try {
-            const result = await critiqueGptResponse({ gptResponse: lastGptMessage.text });
+            // @ts-ignore - plan is passed to the flow but not explicitly typed in the function signature for now
+            const result = await critiqueGptResponse({ gptResponse: lastGptMessage.text }, plan);
             const critique = `**Review of last GPT response:**\n\n${result.critique}`;
             setMessages(prev => [...prev, { id: `gemini-critique-${Date.now()}`, agent: 'gemini', text: critique }]);
           } catch (error) {
@@ -78,7 +83,8 @@ export default function ChatLayout() {
         if (lastGpt && lastGemini) {
           setMessages(prev => [...prev, { id: `system-typing-${Date.now()}`, agent: 'system', text: 'Summarizing...', isTyping: true }]);
           try {
-            const result = await summarizeResponses({ gptResponse: lastGpt.text, geminiResponse: lastGemini.text });
+             // @ts-ignore - plan is passed to the flow but not explicitly typed in the function signature for now
+            const result = await summarizeResponses({ gptResponse: lastGpt.text, geminiResponse: lastGemini.text }, plan);
             setMessages(prev => prev.filter(m => m.id !== `system-typing-${Date.now()}`));
             setMessages(prev => [...prev, { id: `summary-${Date.now()}`, agent: 'system', text: `**Summary of last responses:**\n\n${result.summary}` }]);
           } catch (error) {
@@ -99,8 +105,8 @@ export default function ChatLayout() {
     setGeminiTyping(true);
     
     const [gptResponse, geminiResponse] = await Promise.all([
-      callGptAgent(messageText),
-      callGeminiAgent(messageText)
+      callGptAgent(messageText, plan),
+      callGeminiAgent(messageText, plan)
     ]);
 
     setMessages(prev => [
