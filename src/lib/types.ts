@@ -1,8 +1,8 @@
-export type Agent = 'user' | 'gpt' | 'gemini' | 'system';
+export type Agent = 'user' | 'gpt' | 'gemini' | 'multa';
 
 export interface ChatMessage {
   id: string;
-  agent: Agent;
-  text: string;
+  author: Agent;
+  content: string;
   isTyping?: boolean;
 }

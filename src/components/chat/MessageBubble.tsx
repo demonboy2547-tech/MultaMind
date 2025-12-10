@@ -30,7 +30,7 @@ const agentStyles = {
       bubble: 'bg-card rounded-bl-none',
       icon: <Bot className="size-5 flex-shrink-0 text-foreground" />,
     },
-    system: {
+    multa: {
       container: 'items-center',
       bubble: 'bg-transparent text-muted-foreground border border-dashed text-xs',
       icon: <BrainCircuit className="size-4 flex-shrink-0 text-muted-foreground" />,
@@ -38,14 +38,14 @@ const agentStyles = {
 };
 
 export default function MessageBubble({ message }: MessageBubbleProps) {
-  const { agent, text, isTyping } = message;
-  const styles = agentStyles[agent];
+  const { author, content, isTyping } = message;
+  const styles = agentStyles[author];
 
-  if (agent === 'system') {
+  if (author === 'multa') {
     return (
         <div className="flex justify-center items-center gap-2 w-full">
           <div className={cn('max-w-full px-3 py-2 rounded-lg', styles.bubble)}>
-            {isTyping ? <TypingIndicator /> : <p className="whitespace-pre-wrap">{text}</p>}
+            {isTyping ? <TypingIndicator /> : <p className="whitespace-pre-wrap">{content}</p>}
           </div>
         </div>
     )
@@ -53,11 +53,11 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
 
   return (
     <div className={cn('flex w-full gap-2', styles.container)}>
-        {agent !== 'user' && <div className="p-2 rounded-full bg-card self-start">{styles.icon}</div>}
+        {author !== 'user' && <div className="p-2 rounded-full bg-card self-start">{styles.icon}</div>}
       <div className={cn('max-w-[80%] px-4 py-3 rounded-xl', styles.bubble)}>
-        {isTyping ? <TypingIndicator /> : <p className="whitespace-pre-wrap">{text}</p>}
+        {isTyping ? <TypingIndicator /> : <p className="whitespace-pre-wrap">{content}</p>}
       </div>
-      {agent === 'user' && <div className="p-2 rounded-full bg-primary self-start">{styles.icon}</div>}
+      {author === 'user' && <div className="p-2 rounded-full bg-primary self-start">{styles.icon}</div>}
     </div>
   );
 }

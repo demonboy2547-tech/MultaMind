@@ -24,7 +24,7 @@ export default function ChatColumn({ title, messages, isTyping }: ChatColumnProp
       {messages.map((msg) => (
         <MessageBubble key={msg.id} message={msg} />
       ))}
-      {isTyping && <MessageBubble message={{ id: `typing-${title}`, agent: title.toLowerCase() as 'gpt' | 'gemini', text: '', isTyping: true }} />}
+      {isTyping && <MessageBubble message={{ id: `typing-${title}`, author: title.toLowerCase() as 'gpt' | 'gemini', content: '', isTyping: true }} />}
     </div>
   );
 }
