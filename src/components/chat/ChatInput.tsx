@@ -25,7 +25,7 @@ export default function ChatInput({ input, setInput, onSendMessage, isTyping }: 
   const quickActions = [
     { command: '/gpt ', label: 'Ask GPT', icon: <Bot className="size-4" /> },
     { command: '/gemini ', label: 'Ask Gemini', icon: <Bot className="size-4" /> },
-    { command: '/review', label: 'Review GPT', icon: <Scan className="size-4" /> },
+    { command: '/review gpt', label: 'Review GPT', icon: <Scan className="size-4" /> },
     { command: '/summarize', label: 'Summarize', icon: <FileQuestion className="size-4" /> },
   ];
 

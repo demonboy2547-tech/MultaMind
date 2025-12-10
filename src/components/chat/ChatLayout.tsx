@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { ChatMessage, Agent } from '@/lib/types';
 import { callGptAgent, callGeminiAgent } from '@/lib/agents';
 import { summarizeResponses } from '@/ai/flows/summarize-responses';
-import { reviewGptWithGemini } from '@/lib/review';
+import { reviewGptWithGemini, reviewGeminiWithGpt } from '@/lib/review';
 import ChatColumn from './ChatColumn';
 import ChatInput from './ChatInput';
 
@@ -60,14 +60,26 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
         setGeminiTyping(false);
         break;
       case '/review':
-        setGeminiTyping(true);
-        try {
-          const reviewMessage = await reviewGptWithGemini(messages, plan);
-          setMessages(prev => [...prev, { ...reviewMessage, id: `gemini-review-${Date.now()}` }]);
-        } catch (error) {
-          toast({ variant: "destructive", title: "Error", description: "Failed to get review." });
-        } finally {
-          setGeminiTyping(false);
+        if (rest.toLowerCase() === 'gemini') {
+          setGptTyping(true);
+          try {
+            const reviewMessage = await reviewGeminiWithGpt(messages, plan);
+            setMessages(prev => [...prev, { ...reviewMessage, id: `gpt-review-${Date.now()}` }]);
+          } catch (error) {
+            toast({ variant: "destructive", title: "Error", description: "Failed to get review from GPT." });
+          } finally {
+            setGptTyping(false);
+          }
+        } else { // Default to reviewing GPT
+          setGeminiTyping(true);
+          try {
+            const reviewMessage = await reviewGptWithGemini(messages, plan);
+            setMessages(prev => [...prev, { ...reviewMessage, id: `gemini-review-${Date.now()}` }]);
+          } catch (error) {
+            toast({ variant: "destructive", title: "Error", description: "Failed to get review from Gemini." });
+          } finally {
+            setGeminiTyping(false);
+          }
         }
         break;
       case '/summarize':
