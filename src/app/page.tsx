@@ -13,13 +13,15 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import ChatLayout from '@/components/chat/ChatLayout';
 import { ChatProvider, useChat } from '@/context/ChatContext';
 import RenameChatDialog from '@/components/chat/RenameChatDialog';
+import DeleteChatDialog from '@/components/chat/DeleteChatDialog';
 import type { ChatIndexItem } from '@/lib/types';
 
 
 function ChatHistory() {
-  const { chats, activeChatId, setActiveChatId, isLoading, createNewChat, togglePinChat, renameChat } = useChat();
+  const { chats, activeChatId, setActiveChatId, isLoading, createNewChat, togglePinChat, renameChat, deleteChat } = useChat();
   const [searchTerm, setSearchTerm] = useState('');
   const [renamingChat, setRenamingChat] = useState<ChatIndexItem | null>(null);
+  const [deletingChat, setDeletingChat] = useState<ChatIndexItem | null>(null);
 
   const filteredChats = useMemo(() => {
     const list = chats ?? [];
@@ -40,10 +42,21 @@ function ChatHistory() {
   const handleRename = (chat: ChatIndexItem) => {
     setRenamingChat(chat);
   };
+  
+  const handleDelete = (chat: ChatIndexItem) => {
+    setDeletingChat(chat);
+  };
 
   const handleRenameSave = (newName: string) => {
     if (renamingChat) {
       renameChat(renamingChat.id, newName);
+    }
+  };
+
+  const handleDeleteConfirm = () => {
+    if (deletingChat) {
+      deleteChat(deletingChat.id);
+      setDeletingChat(null);
     }
   };
 
@@ -75,7 +88,7 @@ function ChatHistory() {
                 <span>Rename</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive">
+              <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive" onClick={() => handleDelete(chat)}>
                 <Trash2 className="size-4" />
                 <span>Delete</span>
               </DropdownMenuItem>
@@ -126,6 +139,13 @@ function ChatHistory() {
           isOpen={!!renamingChat}
           onClose={() => setRenamingChat(null)}
           onSave={handleRenameSave}
+        />
+      )}
+      {deletingChat && (
+        <DeleteChatDialog
+            isOpen={!!deletingChat}
+            onClose={() => setDeletingChat(null)}
+            onConfirm={handleDeleteConfirm}
         />
       )}
     </div>

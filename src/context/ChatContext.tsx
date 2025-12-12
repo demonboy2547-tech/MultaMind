@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, query, where, addDoc, serverTimestamp, getDocs, updateDoc, doc, writeBatch, Timestamp, setDoc, orderBy } from 'firebase/firestore';
+import { collection, query, where, addDoc, serverTimestamp, getDocs, updateDoc, doc, writeBatch, Timestamp, setDoc, orderBy, deleteDoc } from 'firebase/firestore';
 import type { ChatMessage, ChatIndexItem } from '@/lib/types';
 import { useCollection } from '@/firebase/firestore/use-collection';
 
@@ -18,6 +18,7 @@ interface ChatContextType {
   saveNewChat: (chatId: string, title: string, messages: ChatMessage[]) => void;
   togglePinChat: (chatId: string) => void;
   renameChat: (chatId: string, newTitle: string) => void;
+  deleteChat: (chatId: string) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -249,6 +250,39 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   }, [chats, user, firestore]);
 
+  const deleteChat = useCallback(async (chatId: string) => {
+    const updatedChats = chats.filter(c => c.id !== chatId);
+    
+    if (user && firestore) {
+        try {
+            // It's more complex to delete a collection in the client.
+            // For now, we just delete the parent doc. Subcollection remains.
+            // A proper implementation uses a Cloud Function to delete subcollections.
+            const chatRef = doc(firestore, 'chats', chatId);
+            await deleteDoc(chatRef);
+        } catch (error) {
+            console.error("Error deleting chat from Firestore:", error);
+            // Optionally, revert UI state if firestore deletion fails
+            return;
+        }
+    } else {
+        // Guest user: remove from localStorage
+        localStorage.removeItem(`guestChat:${chatId}`);
+        localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
+    }
+
+    setChats(updatedChats);
+
+    // If the active chat was the one deleted, update the active chat ID
+    if (activeChatId === chatId) {
+        if (updatedChats.length > 0) {
+            setActiveChatId(updatedChats[0].id);
+        } else {
+            createNewChat(); // Or set to null and show an empty state
+        }
+    }
+  }, [chats, user, firestore, activeChatId, createNewChat]);
+
 
   const value = {
     chats,
@@ -262,6 +296,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     saveNewChat,
     togglePinChat,
     renameChat,
+    deleteChat,
   };
 
   return (
