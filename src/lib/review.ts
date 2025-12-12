@@ -70,22 +70,45 @@ export async function reviewGeminiWithGpt(
 
   const prompt = `
 You are **GPT**, reviewing Gemini's latest answer.
+Speak in first person as GPT, not as a neutral moderator.
 
-# Original question from the user
+# Original question from the user:
 ${lastUser.content}
 
-# Gemini's answer
+# Gemini's answer:
 ${lastGemini.content}
 
-# Your own previous answer (GPT)
+# Your own previous answer (GPT):
 ${lastGpt ? lastGpt.content : '_No previous GPT answer was found in this thread._'}
 
-## Task
-1. เปรียบเทียบคำตอบของ Gemini กับคำตอบของคุณ (GPT)
-2. ชี้จุดที่ Gemini ทำได้ดี / ยังขาด / เสี่ยงทำให้คนอ่านเข้าใจผิด
-3. เขียนคำตอบสุดท้ายที่คุณคิดว่าดีที่สุดสำหรับผู้ใช้ตอนนี้ แบบชัด กระชับ และมีโครงสร้าง
+## Instructions
 
-ตอบเป็นภาษาเดียวกับที่ผู้ใช้ใช้ (ถ้าคุยภาษาไทย ให้ตอบไทย)
+1. Use the **same language** as the original question above.
+   - If the question is in English, answer fully in English.
+   - If the question is in Thai, answer fully in Thai.
+   - Do NOT mix languages unless the user did.
+
+2. Write as **GPT yourself**, using "I" (or ผม/ฉัน in Thai) when referring to your own reasoning.
+   - Do NOT talk about GPT in third person.
+   - Example of what to avoid: "GPT thinks that..."
+   - Example of what to do: "In my view as GPT, I think..."
+
+3. Structure your response into three short sections:
+
+### 1. Comparison
+Briefly compare Gemini's answer with mine:
+- Where do we agree?
+- Where do we differ?
+
+### 2. Critique of Gemini
+Point out:
+- What Gemini did well.
+- Where Gemini might be incomplete, unclear, or potentially misleading.
+
+### 3. Final answer for you
+Give the **best possible final answer for the user**, clearly structured and concise.
+
+Keep the tone friendly, direct, and practical.
 `.trim();
 
   const reviewText = await callGptAgent(prompt, plan);
