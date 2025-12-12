@@ -12,9 +12,10 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import ChatLayout from '@/components/chat/ChatLayout';
 import { ChatProvider, useChat } from '@/context/ChatContext';
+import { cn } from '@/lib/utils';
 
 function ChatHistory() {
-  const { chats, activeChatId, setActiveChatId, isLoading, createNewChat } = useChat();
+  const { chats, activeChatId, setActiveChatId, isLoading, createNewChat, togglePinChat } = useChat();
   const [searchTerm, setSearchTerm] = useState('');
 
   const handleChatAction = (e: React.MouseEvent, action: () => void) => {
@@ -33,7 +34,10 @@ function ChatHistory() {
     return filteredChats?.map((chat) => (
       <SidebarMenuItem key={chat.id}>
         <SidebarMenuButton isActive={chat.id === activeChatId} className="h-8 justify-between group" onClick={() => setActiveChatId(chat.id)}>
-          <span className="truncate">{chat.title}</span>
+          <div className="flex items-center gap-2 truncate">
+            {chat.pinned && <Pin className="size-3 shrink-0 text-amber-500" />}
+            <span className="truncate">{chat.title}</span>
+          </div>
            <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button 
@@ -46,9 +50,9 @@ function ChatHistory() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="right" align="start">
-                <DropdownMenuItem onClick={(e) => handleChatAction(e, () => console.log('Pin/Unpin', chat.id))}>
+                <DropdownMenuItem onClick={(e) => handleChatAction(e, () => togglePinChat(chat.id))}>
                   <Pin className="size-4 mr-2" />
-                  Pin/Unpin
+                  {chat.pinned ? 'Unpin' : 'Pin'}
                 </DropdownMenuItem>
                  <DropdownMenuItem onClick={(e) => handleChatAction(e, () => console.log('Share', chat.id))}>
                   <Share2 className="size-4 mr-2" />

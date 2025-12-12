@@ -16,6 +16,7 @@ interface ChatContextType {
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   createNewChat: () => void;
   saveNewChat: (chatId: string, title: string, messages: ChatMessage[]) => void;
+  togglePinChat: (chatId: string) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -33,6 +34,15 @@ async function getHeaders() {
     }
     return { 'Content-Type': 'application/json' };
 }
+
+// Helper to sort chats with pinned items first
+const sortChats = (chats: ChatIndexItem[]): ChatIndexItem[] => {
+  return [...chats].sort((a, b) => {
+    if (a.pinned && !b.pinned) return -1;
+    if (!a.pinned && b.pinned) return 1;
+    return b.updatedAt - a.updatedAt;
+  });
+};
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const { user } = useUser();
@@ -53,14 +63,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // Effect to load chats from Firestore or localStorage
   useEffect(() => {
     if (user && firestoreChats) {
-      const sortedChats = [...firestoreChats].sort((a, b) => b.updatedAt - a.updatedAt);
-      setChats(sortedChats);
+      setChats(sortChats(firestoreChats));
     } else if (!user) {
       const storedChats = localStorage.getItem('guestChatsIndex');
       if (storedChats) {
         const parsedChats: ChatIndexItem[] = JSON.parse(storedChats);
-        parsedChats.sort((a, b) => b.updatedAt - a.updatedAt);
-        setChats(parsedChats);
+        setChats(sortChats(parsedChats));
       } else {
         setChats([]);
       }
@@ -148,6 +156,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                   title: title,
                   createdAt: serverTimestamp(),
                   updatedAt: serverTimestamp(),
+                  pinned: false,
               });
 
               // 2. Add all messages to the messages subcollection
@@ -165,16 +174,37 @@ export function ChatProvider({ children }: { children: ReactNode }) {
               console.error("Error saving new chat and messages to Firestore:", error);
           }
       } else { // Guest user
-          const newChatIndex: ChatIndexItem = { id: chatId, title, updatedAt: Date.now() };
+          const newChatIndex: ChatIndexItem = { id: chatId, title, updatedAt: Date.now(), pinned: false };
           const updatedChats = [newChatIndex, ...chats];
-          updatedChats.sort((a, b) => b.updatedAt - a.updatedAt);
           
-          setChats(updatedChats);
+          setChats(sortChats(updatedChats));
           localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
           localStorage.setItem(`guestChat:${chatId}`, JSON.stringify(updatedMessages));
       }
   }, [user, firestore, chats]);
 
+  const togglePinChat = useCallback(async (chatId: string) => {
+    const chat = chats.find(c => c.id === chatId);
+    if (!chat) return;
+
+    const newPinnedState = !chat.pinned;
+    const updatedChats = chats.map(c => c.id === chatId ? { ...c, pinned: newPinnedState } : c);
+    
+    setChats(sortChats(updatedChats));
+
+    if (user && firestore) {
+      try {
+        const chatRef = doc(firestore, 'chats', chatId);
+        await updateDoc(chatRef, { pinned: newPinnedState });
+      } catch (error) {
+        console.error("Error updating pin state in Firestore:", error);
+        // Revert UI change on error
+        setChats(sortChats(chats));
+      }
+    } else {
+      localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
+    }
+  }, [chats, user, firestore]);
 
   const value = {
     chats,
@@ -186,6 +216,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setMessages,
     createNewChat,
     saveNewChat,
+    togglePinChat,
   };
 
   return (
