@@ -37,12 +37,14 @@ function ChatHistory() {
 
   const renderChatList = () => {
     return filteredChats?.map((chat) => (
-      <SidebarMenuItem key={chat.id}>
-        <SidebarMenuButton isActive={chat.id === activeChatId} className="h-8 justify-between group" onClick={() => setActiveChatId(chat.id)}>
+      <SidebarMenuItem key={chat.id} className="relative group">
+        <SidebarMenuButton isActive={chat.id === activeChatId} className="h-8 w-full justify-between" onClick={() => setActiveChatId(chat.id)}>
           <div className="flex items-center gap-2 truncate">
             {chat.pinned && <Pin className="size-3 shrink-0 text-amber-500" />}
             <span className="truncate">{chat.title}</span>
           </div>
+        </SidebarMenuButton>
+        <div className="absolute right-1 top-1/2 -translate-y-1/2">
            <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button 
@@ -73,7 +75,7 @@ function ChatHistory() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-        </SidebarMenuButton>
+        </div>
       </SidebarMenuItem>
     ));
   }
