@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import type { FormEvent } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -14,20 +14,17 @@ import { reviewGptWithGemini, reviewGeminiWithGpt } from '@/lib/review';
 import ChatColumn from './ChatColumn';
 import ChatInput from './ChatInput';
 import { useChat } from '@/context/ChatContext';
-import { useUser } from '@/firebase';
 
 interface ChatLayoutProps {
   plan: 'free' | 'pro';
 }
 
 export default function ChatLayout({ plan }: ChatLayoutProps) {
-  const { user } = useUser();
   const { 
     activeChatId, 
     messages, 
     setMessages, 
-    saveMessages,
-    updateChatTitle
+    saveNewChat
   } = useChat();
 
   const [input, setInput] = useState('');
@@ -36,19 +33,14 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
   const isMobile = useIsMobile();
   const { toast } = useToast();
 
-  const appendAndSave = (newMessage: ChatMessage) => {
-    setMessages(prev => {
-      const updated = [...prev, newMessage];
-      if (activeChatId) {
-        saveMessages(activeChatId, updated);
-        // If this is the first user message, update the title
-        if (updated.filter(m => m.author === 'user').length === 1) {
-            updateChatTitle(activeChatId, newMessage.content.substring(0, 40));
-        }
-      }
-      return updated;
-    });
+  // A helper function to manage saving messages and chat creation
+  const handleSave = (newMessages: ChatMessage[]) => {
+    if (activeChatId) {
+        // This is the first user message in a new chat.
+        saveNewChat(activeChatId, newMessages[0].content.substring(0, 40), newMessages);
+    }
   };
+
 
   const handleSendMessage = async (e: FormEvent) => {
     e.preventDefault();
@@ -56,34 +48,53 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
     if (!messageText || !activeChatId) return;
 
     const userMessage: ChatMessage = { id: `user-${Date.now()}`, author: 'user', content: messageText };
-    appendAndSave(userMessage);
+    
+    // Optimistically update the UI with the user's message
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
     
     setInput('');
 
     const [command, ...args] = messageText.split(' ');
     
     if (command.startsWith('/')) {
+      // Slash commands are handled differently and might not persist in the same way.
+      // For now, they won't trigger the save of a new chat.
       await handleSlashCommand(command, args.join(' '));
     } else {
-      await handleDualAgentQuery(messageText);
+      // This is a standard message, so we'll get responses from both agents.
+      await handleDualAgentQuery(messageText, newMessages);
     }
   };
 
+  const appendAndSave = (newMessage: ChatMessage, allMessages: ChatMessage[]) => {
+    const updatedMessages = [...allMessages, newMessage];
+    setMessages(updatedMessages);
+    if(activeChatId) {
+      saveNewChat(activeChatId, updatedMessages[0].content.substring(0, 40), updatedMessages);
+    }
+  }
+
+
   const handleSlashCommand = async (command: string, rest: string) => {
     if (!activeChatId) return;
+    // Note: Slash commands will add to messages, but won't trigger a new chat save.
+    // This could be changed if needed.
+    const currentMessages = messages;
+    
     switch (command) {
       case '/gpt':
         setGptTyping(true);
         const gptResponse = await callGptAgent(rest, plan);
         const gptMessage = { id: `gpt-${Date.now()}`, author: 'gpt' as const, content: gptResponse };
-        appendAndSave(gptMessage);
+        appendAndSave(gptMessage, [...currentMessages, {id: `user-cmd-${Date.now()}`, author: 'user', content: `${command} ${rest}`}]);
         setGptTyping(false);
         break;
       case '/gemini':
         setGeminiTyping(true);
         const geminiResponse = await callGeminiAgent(rest, plan);
         const geminiMessage = { id: `gemini-${Date.now()}`, author: 'gemini' as const, content: geminiResponse };
-        appendAndSave(geminiMessage);
+        appendAndSave(geminiMessage, [...currentMessages, {id: `user-cmd-${Date.now()}`, author: 'user', content: `${command} ${rest}`}]);
         setGeminiTyping(false);
         break;
       case '/review':
@@ -92,7 +103,7 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
           try {
             const reviewMessage = await reviewGeminiWithGpt(messages, plan);
             const gptReviewMessage = { ...reviewMessage, id: `gpt-review-${Date.now()}` };
-            appendAndSave(gptReviewMessage);
+            appendAndSave(gptReviewMessage, currentMessages);
           } catch (error) {
             toast({ variant: "destructive", title: "Error", description: "Failed to get review from GPT." });
           } finally {
@@ -103,7 +114,7 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
           try {
             const reviewMessage = await reviewGptWithGemini(messages, plan);
             const geminiReviewMessage = { ...reviewMessage, id: `gemini-review-${Date.now()}` };
-            appendAndSave(geminiReviewMessage);
+            appendAndSave(geminiReviewMessage, currentMessages);
           } catch (error) {
             toast({ variant: "destructive", title: "Error", description: "Failed to get review from Gemini." });
           } finally {
@@ -116,28 +127,30 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
         const lastGemini = [...messages].reverse().find(m => m.author === 'gemini');
         if (lastGpt && lastGemini) {
           const typingMessage = { id: `multa-typing-${Date.now()}`, author: 'multa' as const, content: 'Summarizing...', isTyping: true };
-          appendAndSave(typingMessage);
+          setMessages(prev => [...prev, typingMessage]);
           try {
             const result = await summarizeResponses({ gptResponse: lastGpt.content, geminiResponse: lastGemini.content }, plan);
-            setMessages(prev => prev.filter(m => m.id !== typingMessage.id));
             const summaryMessage = { id: `summary-${Date.now()}`, author: 'multa' as const, content: `**Summary of last responses:**\n\n${result.summary}` };
-            appendAndSave(summaryMessage);
+            setMessages(prev => [...prev.filter(m => m.id !== typingMessage.id), summaryMessage]);
+             if(activeChatId) {
+                saveNewChat(activeChatId, messages[0].content.substring(0, 40), [...messages, summaryMessage]);
+             }
           } catch (error) {
             setMessages(prev => prev.filter(m => m.id !== typingMessage.id));
             toast({ variant: "destructive", title: "Error", description: "Failed to summarize." });
           }
         } else {
           const multaMessage = { id: `multa-${Date.now()}`, author: 'multa' as const, content: "A response from both GPT and Gemini is needed to summarize." };
-          appendAndSave(multaMessage);
+          appendAndSave(multaMessage, currentMessages);
         }
         break;
       default:
         const unknownCmdMessage = { id: `multa-${Date.now()}`, author: 'multa' as const, content: `Unknown command: ${command}` };
-        appendAndSave(unknownCmdMessage);
+        appendAndSave(unknownCmdMessage, currentMessages);
     }
   };
 
-  const handleDualAgentQuery = async (messageText: string) => {
+  const handleDualAgentQuery = async (messageText: string, currentMessages: ChatMessage[]) => {
     if (!activeChatId) return;
 
     setGptTyping(true);
@@ -148,19 +161,17 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
       callGeminiAgent(messageText, plan)
     ]);
 
+    setGptTyping(false);
+    setGeminiTyping(false);
+
     const gptMessage = { id: `gpt-${Date.now()}`, author: 'gpt' as const, content: gptResponse };
     const geminiMessage = { id: `gemini-${Date.now() + 1}`, author: 'gemini' as const, content: geminiResponse };
 
-    setMessages(prev => {
-      const updated = [...prev, gptMessage, geminiMessage];
-       if (activeChatId) {
-        saveMessages(activeChatId, updated);
-      }
-      return updated;
-    });
+    const finalMessages = [...currentMessages, gptMessage, geminiMessage];
+    setMessages(finalMessages);
     
-    setGptTyping(false);
-    setGeminiTyping(false);
+    // After getting the first AI replies, save the new chat.
+    handleSave(finalMessages);
   };
   
   const filterMessages = (agent: Agent) => messages.filter(m => m.author === agent || m.author === 'user' || m.author === 'multa');

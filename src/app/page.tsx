@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { SidebarProvider, Sidebar, SidebarTrigger, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/firebase';
@@ -14,7 +14,7 @@ import ChatLayout from '@/components/chat/ChatLayout';
 import { ChatProvider, useChat } from '@/context/ChatContext';
 
 function ChatHistory() {
-  const { chats, activeChatId, setActiveChatId, isLoading } = useChat();
+  const { chats, activeChatId, setActiveChatId, isLoading, createNewChat } = useChat();
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredChats = useMemo(() => {
@@ -35,30 +35,38 @@ function ChatHistory() {
   }
 
   return (
-    <div className="flex flex-col gap-2 px-2">
-      <div className="relative">
-        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input 
-          placeholder="Search chats..." 
-          className="w-full rounded-lg bg-background pl-8" 
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-      </div>
-      <div className="flex-1 overflow-y-auto">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <span className="px-2 text-xs font-medium text-muted-foreground">Your Chats</span>
-          </SidebarMenuItem>
-          {isLoading && (
-            <>
-              <SidebarMenuItem><SidebarMenuButton className="h-8" asChild><div className="h-4 w-3/4 rounded-md bg-muted animate-pulse" /></SidebarMenuButton></SidebarMenuItem>
-              <SidebarMenuItem><SidebarMenuButton className="h-8" asChild><div className="h-4 w-1/2 rounded-md bg-muted animate-pulse" /></SidebarMenuButton></SidebarMenuItem>
-              <SidebarMenuItem><SidebarMenuButton className="h-8" asChild><div className="h-4 w-2/3 rounded-md bg-muted animate-pulse" /></SidebarMenuButton></SidebarMenuItem>
-            </>
-          )}
-          {renderChatList()}
-        </SidebarMenu>
+    <div className="flex flex-col flex-1 overflow-hidden">
+      <SidebarHeader>
+        <Button variant="outline" className="w-full justify-start gap-2" onClick={createNewChat}>
+          <Plus className="size-4" />
+          <span className="group-data-[collapsible=icon]:hidden">New Chat</span>
+        </Button>
+      </SidebarHeader>
+      <div className="flex flex-col gap-2 p-2 flex-1 overflow-y-auto">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input 
+            placeholder="Search chats..." 
+            className="w-full rounded-lg bg-background pl-8" 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <span className="px-2 text-xs font-medium text-muted-foreground">Your Chats</span>
+            </SidebarMenuItem>
+            {isLoading && (
+              <>
+                <SidebarMenuItem><SidebarMenuButton className="h-8" asChild><div className="h-4 w-3/4 rounded-md bg-muted animate-pulse" /></SidebarMenuButton></SidebarMenuItem>
+                <SidebarMenuItem><SidebarMenuButton className="h-8" asChild><div className="h-4 w-1/2 rounded-md bg-muted animate-pulse" /></SidebarMenuButton></SidebarMenuItem>
+                <SidebarMenuItem><SidebarMenuButton className="h-8" asChild><div className="h-4 w-2/3 rounded-md bg-muted animate-pulse" /></SidebarMenuButton></SidebarMenuItem>
+              </>
+            )}
+            {renderChatList()}
+          </SidebarMenu>
+        </div>
       </div>
     </div>
   )
@@ -66,7 +74,7 @@ function ChatHistory() {
 
 function HomePageContent() {
   const { user, isUserLoading } = useUser();
-  const { activeChatId, createNewChat, setActiveChatId } = useChat();
+  const { activeChatId, setActiveChatId } = useChat();
   const [plan, setPlan] = useState<'free' | 'pro'>('free');
 
   const handleSignOut = async () => {
@@ -88,13 +96,7 @@ function HomePageContent() {
     <SidebarProvider>
       <div className="flex h-screen w-full">
         <Sidebar collapsible="offcanvas">
-          <SidebarHeader>
-            <Button variant="outline" className="w-full justify-start gap-2" onClick={createNewChat}>
-              <Plus className="size-4" />
-              <span className="group-data-[collapsible=icon]:hidden">New Chat</span>
-            </Button>
-          </SidebarHeader>
-          <SidebarContent className="p-0">
+          <SidebarContent className="p-0 flex flex-col">
              <ChatHistory />
           </SidebarContent>
           <SidebarFooter className="p-2">
@@ -140,7 +142,11 @@ function HomePageContent() {
               <SidebarTrigger />
               <h1 className="font-semibold">MultaMind</h1>
             </header>
-          {activeChatId && <ChatLayout plan={plan} />}
+          {activeChatId ? <ChatLayout plan={plan} /> : (
+            <div className="flex-1 flex items-center justify-center">
+              <p>Select a chat or start a new one.</p>
+            </div>
+          )}
         </div>
       </div>
     </SidebarProvider>
