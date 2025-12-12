@@ -9,9 +9,10 @@ export interface ChatMessage {
 
 export interface Chat {
     id: string;
-    userId: string;
+    userId?: string; // Optional for guest chats
     title: string;
     createdAt: number; // Use number for timestamp
+    updatedAt?: number; // Use number for timestamp
     chatMemory?: string;
 }
 
@@ -20,4 +21,10 @@ export interface GuestChat {
     title: string;
     updatedAt: number; // Use number for timestamp
     messages: ChatMessage[];
+}
+
+export interface ChatIndexItem {
+    id: string;
+    title:string;
+    updatedAt: number;
 }

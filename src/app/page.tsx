@@ -3,47 +3,19 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { SidebarProvider, Sidebar, SidebarTrigger, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import { useCollection, useUser } from '@/firebase';
+import { useUser } from '@/firebase';
 import { getAuth, signOut } from 'firebase/auth';
 import { LogIn, LogOut, Plus, Search } from 'lucide-react';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
-import { collection, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
-import { useFirestore } from '@/firebase/provider';
-import type { Chat, GuestChat } from '@/lib/types';
-import { useMemoFirebase } from '@/firebase/provider';
 import ChatLayout from '@/components/chat/ChatLayout';
+import { ChatProvider, useChat } from '@/context/ChatContext';
 
-
-function ChatHistory({ activeChatId, setActiveChatId }: { activeChatId: string | null, setActiveChatId: (id: string | null) => void }) {
-  const { user } = useUser();
-  const firestore = useFirestore();
-  const [guestChats, setGuestChats] = useState<GuestChat[]>([]);
+function ChatHistory() {
+  const { chats, activeChatId, setActiveChatId, isLoading } = useChat();
   const [searchTerm, setSearchTerm] = useState('');
-
-  const chatsQuery = useMemoFirebase(() => {
-    if (!user || !firestore) return null;
-    return query(collection(firestore, 'chats'), where('userId', '==', user.uid));
-  }, [user, firestore]);
-
-  const { data: chats, isLoading } = useCollection<Chat>(chatsQuery);
-
-  useEffect(() => {
-    if (!user) {
-      const storedChats = localStorage.getItem('guestChatsIndex');
-      if (storedChats) {
-        const parsedChats = JSON.parse(storedChats);
-        parsedChats.sort((a: GuestChat, b: GuestChat) => b.updatedAt - a.updatedAt);
-        setGuestChats(parsedChats);
-      }
-    }
-  }, [user]);
-
-  const handleSelectChat = (id: string) => {
-    setActiveChatId(id);
-  }
 
   const filteredChats = useMemo(() => {
     if (!searchTerm) return chats;
@@ -52,31 +24,14 @@ function ChatHistory({ activeChatId, setActiveChatId }: { activeChatId: string |
     );
   }, [chats, searchTerm]);
 
-  const filteredGuestChats = useMemo(() => {
-    if (!searchTerm) return guestChats;
-    return guestChats.filter(chat =>
-      chat.title.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [guestChats, searchTerm]);
-
   const renderChatList = () => {
-    if (user) {
-       return filteredChats?.map((chat) => (
-        <SidebarMenuItem key={chat.id}>
-          <SidebarMenuButton isActive={chat.id === activeChatId} className="h-8" onClick={() => handleSelectChat(chat.id)}>
-            <span className="truncate">{chat.title}</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      ));
-    } else {
-       return filteredGuestChats.map((chat) => (
-         <SidebarMenuItem key={chat.id}>
-           <SidebarMenuButton isActive={chat.id === activeChatId} className="h-8" onClick={() => handleSelectChat(chat.id)}>
-             <span className="truncate">{chat.title}</span>
-           </SidebarMenuButton>
-         </SidebarMenuItem>
-       ));
-    }
+    return filteredChats?.map((chat) => (
+      <SidebarMenuItem key={chat.id}>
+        <SidebarMenuButton isActive={chat.id === activeChatId} className="h-8" onClick={() => setActiveChatId(chat.id)}>
+          <span className="truncate">{chat.title}</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    ));
   }
 
   return (
@@ -109,46 +64,16 @@ function ChatHistory({ activeChatId, setActiveChatId }: { activeChatId: string |
   )
 }
 
-export default function Home() {
-  const [plan, setPlan] = useState<'free' | 'pro'>('free');
+function HomePageContent() {
   const { user, isUserLoading } = useUser();
-  const firestore = useFirestore();
-  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const { activeChatId, createNewChat, setActiveChatId } = useChat();
+  const [plan, setPlan] = useState<'free' | 'pro'>('free');
 
   const handleSignOut = async () => {
     const auth = getAuth();
     await signOut(auth);
-    setActiveChatId(null);
+    setActiveChatId(null); // This will trigger context to reset to guest state
   };
-  
-  const handleNewChat = useCallback(async () => {
-    if (user && firestore) {
-      const newChatRef = await addDoc(collection(firestore, 'chats'), {
-        userId: user.uid,
-        title: 'New Chat',
-        createdAt: serverTimestamp(),
-      });
-      setActiveChatId(newChatRef.id);
-    } else {
-      const newChatId = `guest-${Date.now()}`;
-      const newChat: GuestChat = { id: newChatId, title: 'New Chat', updatedAt: Date.now(), messages: [] };
-
-      const indexStr = localStorage.getItem('guestChatsIndex') || '[]';
-      const index: Pick<GuestChat, 'id' | 'title' | 'updatedAt'>[] = JSON.parse(indexStr);
-      index.push({ id: newChat.id, title: newChat.title, updatedAt: newChat.updatedAt });
-      localStorage.setItem('guestChatsIndex', JSON.stringify(index));
-      
-      localStorage.setItem(`guestChat:${newChatId}`, JSON.stringify([]));
-
-      setActiveChatId(newChatId);
-    }
-  }, [user, firestore]);
-
-  useEffect(() => {
-    if (!activeChatId) {
-      handleNewChat();
-    }
-  }, [activeChatId, handleNewChat]);
 
   const getInitials = (name?: string | null) => {
     if (!name) return 'G';
@@ -164,13 +89,13 @@ export default function Home() {
       <div className="flex h-screen w-full">
         <Sidebar collapsible="offcanvas">
           <SidebarHeader>
-            <Button variant="outline" className="w-full justify-start gap-2" onClick={handleNewChat}>
+            <Button variant="outline" className="w-full justify-start gap-2" onClick={createNewChat}>
               <Plus className="size-4" />
               <span className="group-data-[collapsible=icon]:hidden">New Chat</span>
             </Button>
           </SidebarHeader>
           <SidebarContent className="p-0">
-             <ChatHistory activeChatId={activeChatId} setActiveChatId={setActiveChatId}/>
+             <ChatHistory />
           </SidebarContent>
           <SidebarFooter className="p-2">
             {isUserLoading ? (
@@ -215,9 +140,18 @@ export default function Home() {
               <SidebarTrigger />
               <h1 className="font-semibold">MultaMind</h1>
             </header>
-          {activeChatId && <ChatLayout plan={plan} activeChatId={activeChatId} />}
+          {activeChatId && <ChatLayout plan={plan} />}
         </div>
       </div>
     </SidebarProvider>
   );
+}
+
+
+export default function Home() {
+  return (
+    <ChatProvider>
+      <HomePageContent />
+    </ChatProvider>
+  )
 }
