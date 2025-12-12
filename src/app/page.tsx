@@ -76,37 +76,39 @@ function ChatHistory() {
   const renderChatList = () => {
     return filteredChats?.map((chat) => (
       <SidebarMenuItem key={chat.id}>
-        <SidebarMenuButton isActive={chat.id === activeChatId} className="h-8 justify-between" onClick={() => setActiveChatId(chat.id)}>
-          {chat.pinned && <Pin className="size-3 shrink-0" />}
-          <span className="truncate flex-1 text-left">{chat.title}</span>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={handleMenuClick}>
-                <MoreVertical className="size-4" />
-                <span className="sr-only">More options</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent side="right" align="start" onClick={handleMenuClick}>
-              <DropdownMenuItem className="gap-2" onClick={() => handlePinToggle(chat.id)}>
-                <Pin className="size-4" />
-                <span>{chat.pinned ? 'Unpin' : 'Pin'}</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem className="gap-2" onClick={() => handleShare(chat)}>
-                <Share2 className="size-4" />
-                <span>Share</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem className="gap-2" onClick={() => handleRename(chat)}>
-                <Pencil className="size-4" />
-                <span>Rename</span>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive" onClick={() => handleDelete(chat)}>
-                <Trash2 className="size-4" />
-                <span>Delete</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </SidebarMenuButton>
+        <div className="flex items-center">
+            <SidebarMenuButton isActive={chat.id === activeChatId} className="h-8 justify-start flex-1" onClick={() => setActiveChatId(chat.id)}>
+              {chat.pinned && <Pin className="size-3 shrink-0" />}
+              <span className="truncate flex-1 text-left ml-2">{chat.title}</span>
+            </SidebarMenuButton>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={handleMenuClick}>
+                  <MoreVertical className="size-4" />
+                  <span className="sr-only">More options</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="right" align="start" onClick={handleMenuClick}>
+                <DropdownMenuItem className="gap-2" onClick={() => handlePinToggle(chat.id)}>
+                  <Pin className="size-4" />
+                  <span>{chat.pinned ? 'Unpin' : 'Pin'}</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem className="gap-2" onClick={() => handleShare(chat)}>
+                  <Share2 className="size-4" />
+                  <span>Share</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem className="gap-2" onClick={() => handleRename(chat)}>
+                  <Pencil className="size-4" />
+                  <span>Rename</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive" onClick={() => handleDelete(chat)}>
+                  <Trash2 className="size-4" />
+                  <span>Delete</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
       </SidebarMenuItem>
     ));
   }
