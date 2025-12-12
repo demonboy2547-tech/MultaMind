@@ -1,15 +1,15 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, MouseEvent } from 'react';
 import { SidebarProvider, Sidebar, SidebarTrigger, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/firebase';
 import { getAuth, signOut } from 'firebase/auth';
-import { LogIn, LogOut, Plus, Search } from 'lucide-react';
+import { LogIn, LogOut, Plus, Search, MoreVertical, Pin, Share2, Pencil, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import ChatLayout from '@/components/chat/ChatLayout';
 import { ChatProvider, useChat } from '@/context/ChatContext';
 
@@ -24,11 +24,42 @@ function ChatHistory() {
     );
   }, [chats, searchTerm]);
 
+  const handleMenuClick = (e: MouseEvent) => {
+    e.stopPropagation();
+  };
+
   const renderChatList = () => {
     return filteredChats?.map((chat) => (
       <SidebarMenuItem key={chat.id}>
-        <SidebarMenuButton isActive={chat.id === activeChatId} className="h-8" onClick={() => setActiveChatId(chat.id)}>
-          <span className="truncate">{chat.title}</span>
+        <SidebarMenuButton isActive={chat.id === activeChatId} className="h-8 justify-between" onClick={() => setActiveChatId(chat.id)}>
+          <span className="truncate flex-1 text-left">{chat.title}</span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={handleMenuClick}>
+                <MoreVertical className="size-4" />
+                <span className="sr-only">More options</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="right" align="start" onClick={handleMenuClick}>
+              <DropdownMenuItem className="gap-2">
+                <Pin className="size-4" />
+                <span>Pin</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="gap-2">
+                <Share2 className="size-4" />
+                <span>Share</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="gap-2">
+                <Pencil className="size-4" />
+                <span>Rename</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive">
+                <Trash2 className="size-4" />
+                <span>Delete</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </SidebarMenuButton>
       </SidebarMenuItem>
     ));
