@@ -54,7 +54,7 @@ export const FirebaseContext = createContext<FirebaseContextState | undefined>(u
 
 /**
  * Ensures a user document exists in Firestore.
- * If the document doesn't exist, it's created with a 'free' plan.
+ * If the document doesn't exist, it's created with a 'free' plan and empty memory.
  * @param firestore - The Firestore instance.
  * @param user - The authenticated user.
  */
@@ -68,6 +68,7 @@ const ensureUserDocument = async (firestore: Firestore, user: User) => {
         id: user.uid,
         email: user.email,
         plan: 'free',
+        userMemory: '', // Initialize with empty memory
       });
     }
   } catch (error) {

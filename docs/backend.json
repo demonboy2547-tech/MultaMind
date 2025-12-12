@@ -19,6 +19,10 @@
           "type": "string",
           "enum": ["free", "pro"],
           "description": "The user's subscription plan."
+        },
+        "userMemory": {
+            "type": "string",
+            "description": "A long-term summary of user preferences and key information."
         }
       },
       "required": [
@@ -69,6 +73,10 @@
           "type": "string",
           "format": "date-time",
           "description": "Timestamp when the chat was created."
+        },
+        "chatMemory": {
+          "type": "string",
+          "description": "A running summary of the current chat session."
         }
       },
       "required": ["id", "userId", "createdAt"]

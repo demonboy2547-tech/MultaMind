@@ -48,9 +48,11 @@ export async function POST(request: Request) {
       userId: uid,
       title: title || 'New Chat',
       createdAt: Timestamp.now(),
+      chatMemory: '', // Initialize with empty memory
     });
-
-    return NextResponse.json({ id: chatRef.id, title: title || 'New Chat' });
+    
+    const newChat = { id: chatRef.id, title: title || 'New Chat', chatMemory: '' };
+    return NextResponse.json(newChat);
   } catch (error) {
     console.error('Error creating chat:', error);
     return NextResponse.json({ error: 'Failed to create chat' }, { status: 500 });

@@ -37,14 +37,33 @@ service cloud.firestore {
 
     function hasValidUserData_onCreate(userId) {
       let data = request.resource.data;
-      return data.id == userId && data.plan == 'free';
+      // On creation, userMemory can be absent or an empty string
+      return data.id == userId && 
+             data.plan == 'free' &&
+             (!('userMemory' in data) || data.userMemory == '');
     }
 
     function hasValidUserData_onUpdate() {
+      let incomingData = request.resource.data;
+      let existingData = resource.data;
       // Prevent plan changes through direct client update for now
-      return request.resource.data.id == resource.data.id &&
-             request.resource.data.plan == resource.data.plan;
+      return incomingData.id == existingData.id &&
+             incomingData.plan == existingData.plan &&
+             // Allow userMemory to be updated
+             'userMemory' in incomingData;
     }
+    
+    function hasValidChatData_onCreate(userId) {
+        let data = request.resource.data;
+        // On creation, chatMemory can be absent or an empty string
+        return data.userId == userId &&
+               (!('chatMemory' in data) || data.chatMemory == '');
+    }
+    
+    function hasValidChatData_onUpdate(chatId) {
+        return isChatOwner(chatId); // Simplified: if you own the chat, you can update it.
+    }
+
 
     function isChatOwner(chatId) {
       return isSignedIn() && get(/databases/$(database)/documents/chats/$(chatId)).data.userId == request.auth.uid;
@@ -63,8 +82,8 @@ service cloud.firestore {
     match /chats/{chatId} {
       allow get: if isChatOwner(chatId);
       allow list: if isSignedIn(); // Query will be filtered by userId in the app
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update: if isChatOwner(chatId); // e.g., for changing title
+      allow create: if isSignedIn() && hasValidChatData_onCreate(request.auth.uid);
+      allow update: if hasValidChatData_onUpdate(chatId); // e.g., for changing title or memory
       allow delete: if isChatOwner(chatId);
 
       // Rules for messages subcollection
