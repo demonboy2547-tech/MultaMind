@@ -6,7 +6,6 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Logo } from '@/components/ui/Logo';
 import { useToast } from "@/hooks/use-toast";
 import type { ChatMessage, Agent } from '@/lib/types';
 import { callGptAgent, callGeminiAgent } from '@/lib/agents';
@@ -18,6 +17,7 @@ import { useAuth, useUser } from '@/firebase';
 
 interface ChatLayoutProps {
   plan: 'free' | 'pro';
+  activeChatId: string | null;
 }
 
 async function getHeaders() {
@@ -33,42 +33,65 @@ async function getHeaders() {
   return { 'Content-Type': 'application/json' };
 }
 
-export default function ChatLayout({ plan }: ChatLayoutProps) {
+export default function ChatLayout({ plan, activeChatId }: ChatLayoutProps) {
   const { user } = useUser();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isGptTyping, setGptTyping] = useState(false);
   const [isGeminiTyping, setGeminiTyping] = useState(false);
-  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const isMobile = useIsMobile();
   const { toast } = useToast();
   
   useEffect(() => {
-    const createNewChat = async () => {
+    const loadMessages = async () => {
+      if (!activeChatId) return;
+
       if (user) {
         const headers = await getHeaders();
-        const response = await fetch('/api/chats', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ title: 'New Chat' }),
-        });
+        const response = await fetch(`/api/chats/${activeChatId}/messages`, { headers });
         if (response.ok) {
-          const newChat = await response.json();
-          setActiveChatId(newChat.id);
+          const loadedMessages = await response.json();
+          setMessages(loadedMessages);
         } else {
-          toast({ variant: "destructive", title: "Error", description: "Failed to create a new chat." });
+          setMessages([]);
         }
+      } else { // Guest user
+        const storedMessages = localStorage.getItem(`guestChat:${activeChatId}`);
+        setMessages(storedMessages ? JSON.parse(storedMessages) : []);
       }
     };
-    if (user && !activeChatId) {
-      // For simplicity, we create a new chat every time the component mounts for a logged-in user
-      // A more robust implementation would list existing chats and allow selection.
-      createNewChat();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+    loadMessages();
+  }, [activeChatId, user]);
 
-  const postMessage = async (message: Omit<ChatMessage, 'id'>) => {
+  const saveMessages = async (updatedMessages: ChatMessage[]) => {
+    if (!activeChatId) return;
+
+    if (!user) { // Guest user
+      localStorage.setItem(`guestChat:${activeChatId}`, JSON.stringify(updatedMessages));
+      const firstUserMessage = updatedMessages.find(m => m.author === 'user');
+      if (updatedMessages.length === 1 && firstUserMessage) {
+        const newTitle = firstUserMessage.content.substring(0, 40);
+        const indexStr = localStorage.getItem('guestChatsIndex') || '[]';
+        const index = JSON.parse(indexStr);
+        const chatIndex = index.findIndex((c: { id: string }) => c.id === activeChatId);
+        if (chatIndex !== -1) {
+          index[chatIndex].title = newTitle;
+          index[chatIndex].updatedAt = Date.now();
+          localStorage.setItem('guestChatsIndex', JSON.stringify(index));
+        }
+      } else {
+        const indexStr = localStorage.getItem('guestChatsIndex') || '[]';
+        const index = JSON.parse(indexStr);
+        const chatIndex = index.findIndex((c: { id: string }) => c.id === activeChatId);
+        if (chatIndex !== -1) {
+          index[chatIndex].updatedAt = Date.now();
+          localStorage.setItem('guestChatsIndex', JSON.stringify(index));
+        }
+      }
+    }
+  };
+
+  const postMessage = async (message: Omit<ChatMessage, 'id' | 'isTyping'>) => {
     if (user && activeChatId) {
       const headers = await getHeaders();
       await fetch(`/api/chats/${activeChatId}/messages`, {
@@ -79,19 +102,29 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
     }
   };
 
+  const appendAndSave = (newMessage: ChatMessage) => {
+    setMessages(prev => {
+      const updated = [...prev, newMessage];
+      saveMessages(updated);
+      return updated;
+    });
+  };
 
   const handleSendMessage = async (e: FormEvent) => {
     e.preventDefault();
     const messageText = input.trim();
-    if (!messageText) return;
+    if (!messageText || !activeChatId) return;
 
     const userMessage: ChatMessage = { id: `user-${Date.now()}`, author: 'user', content: messageText };
-    setMessages(prev => [...prev, userMessage]);
-    postMessage(userMessage);
+    appendAndSave(userMessage);
+    if (user) {
+      postMessage(userMessage);
+    }
+    
     setInput('');
 
     const [command, ...args] = messageText.split(' ');
-
+    
     if (command.startsWith('/')) {
       await handleSlashCommand(command, args.join(' '));
     } else {
@@ -105,16 +138,16 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
         setGptTyping(true);
         const gptResponse = await callGptAgent(rest, plan);
         const gptMessage = { id: `gpt-${Date.now()}`, author: 'gpt' as const, content: gptResponse };
-        setMessages(prev => [...prev, gptMessage]);
-        postMessage(gptMessage);
+        appendAndSave(gptMessage);
+        if (user) postMessage(gptMessage);
         setGptTyping(false);
         break;
       case '/gemini':
         setGeminiTyping(true);
         const geminiResponse = await callGeminiAgent(rest, plan);
         const geminiMessage = { id: `gemini-${Date.now()}`, author: 'gemini' as const, content: geminiResponse };
-        setMessages(prev => [...prev, geminiMessage]);
-        postMessage(geminiMessage);
+        appendAndSave(geminiMessage);
+        if (user) postMessage(geminiMessage);
         setGeminiTyping(false);
         break;
       case '/review':
@@ -123,8 +156,8 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
           try {
             const reviewMessage = await reviewGeminiWithGpt(messages, plan);
             const gptReviewMessage = { ...reviewMessage, id: `gpt-review-${Date.now()}` };
-            setMessages(prev => [...prev, gptReviewMessage]);
-            postMessage(gptReviewMessage);
+            appendAndSave(gptReviewMessage);
+            if (user) postMessage(gptReviewMessage);
           } catch (error) {
             toast({ variant: "destructive", title: "Error", description: "Failed to get review from GPT." });
           } finally {
@@ -135,8 +168,8 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
           try {
             const reviewMessage = await reviewGptWithGemini(messages, plan);
             const geminiReviewMessage = { ...reviewMessage, id: `gemini-review-${Date.now()}` };
-            setMessages(prev => [...prev, geminiReviewMessage]);
-            postMessage(geminiReviewMessage);
+            appendAndSave(geminiReviewMessage);
+            if (user) postMessage(geminiReviewMessage);
           } catch (error) {
             toast({ variant: "destructive", title: "Error", description: "Failed to get review from Gemini." });
           } finally {
@@ -148,24 +181,26 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
         const lastGpt = [...messages].reverse().find(m => m.author === 'gpt');
         const lastGemini = [...messages].reverse().find(m => m.author === 'gemini');
         if (lastGpt && lastGemini) {
-          setMessages(prev => [...prev, { id: `multa-typing-${Date.now()}`, author: 'multa', content: 'Summarizing...', isTyping: true }]);
+          const typingMessage = { id: `multa-typing-${Date.now()}`, author: 'multa' as const, content: 'Summarizing...', isTyping: true };
+          appendAndSave(typingMessage);
           try {
-             // @ts-ignore - plan is passed to the flow but not explicitly typed in the function signature for now
             const result = await summarizeResponses({ gptResponse: lastGpt.content, geminiResponse: lastGemini.content }, plan);
-            setMessages(prev => prev.filter(m => m.id !== `multa-typing-${Date.now()}`));
+            setMessages(prev => prev.filter(m => m.id !== typingMessage.id));
             const summaryMessage = { id: `summary-${Date.now()}`, author: 'multa' as const, content: `**Summary of last responses:**\n\n${result.summary}` };
-            setMessages(prev => [...prev, summaryMessage]);
-            postMessage(summaryMessage);
+            appendAndSave(summaryMessage);
+            if (user) postMessage(summaryMessage);
           } catch (error) {
-            setMessages(prev => prev.filter(m => m.id !== `multa-typing-${Date.now()}`));
+            setMessages(prev => prev.filter(m => m.id !== typingMessage.id));
             toast({ variant: "destructive", title: "Error", description: "Failed to summarize." });
           }
         } else {
-          setMessages(prev => [...prev, { id: `multa-${Date.now()}`, author: 'multa', content: "A response from both GPT and Gemini is needed to summarize." }]);
+          const multaMessage = { id: `multa-${Date.now()}`, author: 'multa' as const, content: "A response from both GPT and Gemini is needed to summarize." };
+          appendAndSave(multaMessage);
         }
         break;
       default:
-        setMessages(prev => [...prev, { id: `multa-${Date.now()}`, author: 'multa', content: `Unknown command: ${command}` }]);
+        const unknownCmdMessage = { id: `multa-${Date.now()}`, author: 'multa' as const, content: `Unknown command: ${command}` };
+        appendAndSave(unknownCmdMessage);
     }
   };
 
@@ -181,14 +216,16 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
     const gptMessage = { id: `gpt-${Date.now()}`, author: 'gpt' as const, content: gptResponse };
     const geminiMessage = { id: `gemini-${Date.now() + 1}`, author: 'gemini' as const, content: geminiResponse };
 
-    setMessages(prev => [
-      ...prev,
-      gptMessage,
-      geminiMessage
-    ]);
-    
-    postMessage(gptMessage);
-    postMessage(geminiMessage);
+    setMessages(prev => {
+      const updated = [...prev, gptMessage, geminiMessage];
+      saveMessages(updated);
+      return updated;
+    });
+
+    if (user) {
+      postMessage(gptMessage);
+      postMessage(geminiMessage);
+    }
     
     setGptTyping(false);
     setGeminiTyping(false);

@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import ChatLayout from '@/components/chat/ChatLayout';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { SidebarProvider, Sidebar, SidebarTrigger, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { useCollection, useUser } from '@/firebase';
@@ -11,14 +10,17 @@ import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
-import { collection, query, where } from 'firebase/firestore';
+import { collection, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useFirestore } from '@/firebase/provider';
-import type { Chat } from '@/lib/types';
+import type { Chat, GuestChat } from '@/lib/types';
 import { useMemoFirebase } from '@/firebase/provider';
+import ChatLayout from '@/components/chat/ChatLayout';
 
-function ChatHistory() {
+
+function ChatHistory({ activeChatId, setActiveChatId }: { activeChatId: string | null, setActiveChatId: (id: string | null) => void }) {
   const { user } = useUser();
   const firestore = useFirestore();
+  const [guestChats, setGuestChats] = useState<GuestChat[]>([]);
 
   const chatsQuery = useMemoFirebase(() => {
     if (!user || !firestore) return null;
@@ -27,7 +29,40 @@ function ChatHistory() {
 
   const { data: chats, isLoading } = useCollection<Chat>(chatsQuery);
 
-  const activeChatId = '2'; // Mock active chat
+  useEffect(() => {
+    if (!user) {
+      const storedChats = localStorage.getItem('guestChatsIndex');
+      if (storedChats) {
+        const parsedChats = JSON.parse(storedChats);
+        parsedChats.sort((a: GuestChat, b: GuestChat) => b.updatedAt - a.updatedAt);
+        setGuestChats(parsedChats);
+      }
+    }
+  }, [user]);
+
+  const handleSelectChat = (id: string) => {
+    setActiveChatId(id);
+  }
+
+  const renderChatList = () => {
+    if (user) {
+       return chats?.map((chat) => (
+        <SidebarMenuItem key={chat.id}>
+          <SidebarMenuButton isActive={chat.id === activeChatId} className="h-8" onClick={() => handleSelectChat(chat.id)}>
+            <span className="truncate">{chat.title}</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ));
+    } else {
+       return guestChats.map((chat) => (
+         <SidebarMenuItem key={chat.id}>
+           <SidebarMenuButton isActive={chat.id === activeChatId} className="h-8" onClick={() => handleSelectChat(chat.id)}>
+             <span className="truncate">{chat.title}</span>
+           </SidebarMenuButton>
+         </SidebarMenuItem>
+       ));
+    }
+  }
 
   return (
     <div className="flex flex-col gap-2 px-2">
@@ -47,13 +82,7 @@ function ChatHistory() {
               <SidebarMenuItem><SidebarMenuButton className="h-8" asChild><div className="h-4 w-2/3 rounded-md bg-muted animate-pulse" /></SidebarMenuButton></SidebarMenuItem>
             </>
           )}
-          {chats?.map((chat) => (
-            <SidebarMenuItem key={chat.id}>
-              <SidebarMenuButton isActive={chat.id === activeChatId} className="h-8">
-                <span className="truncate">{chat.title}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
+          {renderChatList()}
         </SidebarMenu>
       </div>
     </div>
@@ -63,11 +92,43 @@ function ChatHistory() {
 export default function Home() {
   const [plan, setPlan] = useState<'free' | 'pro'>('free');
   const { user, isUserLoading } = useUser();
+  const firestore = useFirestore();
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
 
   const handleSignOut = async () => {
     const auth = getAuth();
     await signOut(auth);
+    setActiveChatId(null);
   };
+  
+  const handleNewChat = useCallback(async () => {
+    if (user && firestore) {
+      const newChatRef = await addDoc(collection(firestore, 'chats'), {
+        userId: user.uid,
+        title: 'New Chat',
+        createdAt: serverTimestamp(),
+      });
+      setActiveChatId(newChatRef.id);
+    } else {
+      const newChatId = `guest-${Date.now()}`;
+      const newChat: GuestChat = { id: newChatId, title: 'New Chat', updatedAt: Date.now(), messages: [] };
+
+      const indexStr = localStorage.getItem('guestChatsIndex') || '[]';
+      const index: Pick<GuestChat, 'id' | 'title' | 'updatedAt'>[] = JSON.parse(indexStr);
+      index.push({ id: newChat.id, title: newChat.title, updatedAt: newChat.updatedAt });
+      localStorage.setItem('guestChatsIndex', JSON.stringify(index));
+      
+      localStorage.setItem(`guestChat:${newChatId}`, JSON.stringify([]));
+
+      setActiveChatId(newChatId);
+    }
+  }, [user, firestore]);
+
+  useEffect(() => {
+    if (!activeChatId) {
+      handleNewChat();
+    }
+  }, [activeChatId, handleNewChat]);
 
   const getInitials = (name?: string | null) => {
     if (!name) return 'G';
@@ -83,13 +144,13 @@ export default function Home() {
       <div className="flex h-screen w-full">
         <Sidebar collapsible="offcanvas">
           <SidebarHeader>
-            <Button variant="outline" className="w-full justify-start gap-2">
+            <Button variant="outline" className="w-full justify-start gap-2" onClick={handleNewChat}>
               <Plus className="size-4" />
               <span className="group-data-[collapsible=icon]:hidden">New Chat</span>
             </Button>
           </SidebarHeader>
           <SidebarContent className="p-0">
-             <ChatHistory />
+             <ChatHistory activeChatId={activeChatId} setActiveChatId={setActiveChatId}/>
           </SidebarContent>
           <SidebarFooter className="p-2">
             {isUserLoading ? (
@@ -134,7 +195,7 @@ export default function Home() {
               <SidebarTrigger />
               <h1 className="font-semibold">MultaMind</h1>
             </header>
-          <ChatLayout plan={plan} />
+          {activeChatId && <ChatLayout plan={plan} activeChatId={activeChatId} />}
         </div>
       </div>
     </SidebarProvider>
