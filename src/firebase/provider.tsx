@@ -2,7 +2,7 @@
 
 import React, { DependencyList, createContext, useContext, ReactNode, useMemo, useState, useEffect } from 'react';
 import { FirebaseApp } from 'firebase/app';
-import { Firestore } from 'firebase/firestore';
+import { Firestore, doc, getDoc, setDoc } from 'firebase/firestore';
 import { Auth, User, onAuthStateChanged } from 'firebase/auth';
 import { FirebaseErrorListener } from '@/components/FirebaseErrorListener'
 
@@ -53,6 +53,31 @@ export interface UserHookResult { // Renamed from UserAuthHookResult for consist
 export const FirebaseContext = createContext<FirebaseContextState | undefined>(undefined);
 
 /**
+ * Ensures a user document exists in Firestore.
+ * If the document doesn't exist, it's created with a 'free' plan.
+ * @param firestore - The Firestore instance.
+ * @param user - The authenticated user.
+ */
+const ensureUserDocument = async (firestore: Firestore, user: User) => {
+  const userRef = doc(firestore, 'users', user.uid);
+  try {
+    const userDoc = await getDoc(userRef);
+    if (!userDoc.exists()) {
+      // User document doesn't exist, create it.
+      await setDoc(userRef, {
+        id: user.uid,
+        email: user.email,
+        plan: 'free',
+      });
+    }
+  } catch (error) {
+    console.error("Error ensuring user document:", error);
+    // Optionally handle the error, e.g., by logging or showing a notification
+  }
+};
+
+
+/**
  * FirebaseProvider manages and provides Firebase services and user authentication state.
  */
 export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
@@ -69,8 +94,8 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
 
   // Effect to subscribe to Firebase auth state changes
   useEffect(() => {
-    if (!auth) { // If no Auth service instance, cannot determine user state
-      setUserAuthState({ user: null, isUserLoading: false, userError: new Error("Auth service not provided.") });
+    if (!auth || !firestore) { // If no Auth service instance, cannot determine user state
+      setUserAuthState({ user: null, isUserLoading: false, userError: new Error("Auth or Firestore service not provided.") });
       return;
     }
 
@@ -79,6 +104,9 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
     const unsubscribe = onAuthStateChanged(
       auth,
       (firebaseUser) => { // Auth state determined
+        if (firebaseUser) {
+          ensureUserDocument(firestore, firebaseUser);
+        }
         setUserAuthState({ user: firebaseUser, isUserLoading: false, userError: null });
       },
       (error) => { // Auth listener error
@@ -87,7 +115,7 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
       }
     );
     return () => unsubscribe(); // Cleanup
-  }, [auth]); // Depends on the auth instance
+  }, [auth, firestore]); // Depends on the auth instance
 
   // Memoize the context value
   const contextValue = useMemo((): FirebaseContextState => {

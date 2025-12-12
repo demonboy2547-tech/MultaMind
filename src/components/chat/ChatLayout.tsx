@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -14,7 +14,7 @@ import { summarizeResponses } from '@/ai/flows/summarize-responses';
 import { reviewGptWithGemini, reviewGeminiWithGpt } from '@/lib/review';
 import ChatColumn from './ChatColumn';
 import ChatInput from './ChatInput';
-import { useAuth } from '@/firebase';
+import { useAuth, useUser } from '@/firebase';
 
 interface ChatLayoutProps {
   plan: 'free' | 'pro';
@@ -34,13 +34,51 @@ async function getHeaders() {
 }
 
 export default function ChatLayout({ plan }: ChatLayoutProps) {
+  const { user } = useUser();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isGptTyping, setGptTyping] = useState(false);
   const [isGeminiTyping, setGeminiTyping] = useState(false);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const isMobile = useIsMobile();
   const { toast } = useToast();
-  const auth = useAuth();
+  
+  useEffect(() => {
+    const createNewChat = async () => {
+      if (user) {
+        const headers = await getHeaders();
+        const response = await fetch('/api/chats', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ title: 'New Chat' }),
+        });
+        if (response.ok) {
+          const newChat = await response.json();
+          setActiveChatId(newChat.id);
+        } else {
+          toast({ variant: "destructive", title: "Error", description: "Failed to create a new chat." });
+        }
+      }
+    };
+    if (user && !activeChatId) {
+      // For simplicity, we create a new chat every time the component mounts for a logged-in user
+      // A more robust implementation would list existing chats and allow selection.
+      createNewChat();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  const postMessage = async (message: Omit<ChatMessage, 'id'>) => {
+    if (user && activeChatId) {
+      const headers = await getHeaders();
+      await fetch(`/api/chats/${activeChatId}/messages`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(message),
+      });
+    }
+  };
+
 
   const handleSendMessage = async (e: FormEvent) => {
     e.preventDefault();
@@ -49,6 +87,7 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
 
     const userMessage: ChatMessage = { id: `user-${Date.now()}`, author: 'user', content: messageText };
     setMessages(prev => [...prev, userMessage]);
+    postMessage(userMessage);
     setInput('');
 
     const [command, ...args] = messageText.split(' ');
@@ -65,13 +104,17 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
       case '/gpt':
         setGptTyping(true);
         const gptResponse = await callGptAgent(rest, plan);
-        setMessages(prev => [...prev, { id: `gpt-${Date.now()}`, author: 'gpt', content: gptResponse }]);
+        const gptMessage = { id: `gpt-${Date.now()}`, author: 'gpt' as const, content: gptResponse };
+        setMessages(prev => [...prev, gptMessage]);
+        postMessage(gptMessage);
         setGptTyping(false);
         break;
       case '/gemini':
         setGeminiTyping(true);
         const geminiResponse = await callGeminiAgent(rest, plan);
-        setMessages(prev => [...prev, { id: `gemini-${Date.now()}`, author: 'gemini', content: geminiResponse }]);
+        const geminiMessage = { id: `gemini-${Date.now()}`, author: 'gemini' as const, content: geminiResponse };
+        setMessages(prev => [...prev, geminiMessage]);
+        postMessage(geminiMessage);
         setGeminiTyping(false);
         break;
       case '/review':
@@ -79,7 +122,9 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
           setGptTyping(true);
           try {
             const reviewMessage = await reviewGeminiWithGpt(messages, plan);
-            setMessages(prev => [...prev, { ...reviewMessage, id: `gpt-review-${Date.now()}` }]);
+            const gptReviewMessage = { ...reviewMessage, id: `gpt-review-${Date.now()}` };
+            setMessages(prev => [...prev, gptReviewMessage]);
+            postMessage(gptReviewMessage);
           } catch (error) {
             toast({ variant: "destructive", title: "Error", description: "Failed to get review from GPT." });
           } finally {
@@ -89,7 +134,9 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
           setGeminiTyping(true);
           try {
             const reviewMessage = await reviewGptWithGemini(messages, plan);
-            setMessages(prev => [...prev, { ...reviewMessage, id: `gemini-review-${Date.now()}` }]);
+            const geminiReviewMessage = { ...reviewMessage, id: `gemini-review-${Date.now()}` };
+            setMessages(prev => [...prev, geminiReviewMessage]);
+            postMessage(geminiReviewMessage);
           } catch (error) {
             toast({ variant: "destructive", title: "Error", description: "Failed to get review from Gemini." });
           } finally {
@@ -106,7 +153,9 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
              // @ts-ignore - plan is passed to the flow but not explicitly typed in the function signature for now
             const result = await summarizeResponses({ gptResponse: lastGpt.content, geminiResponse: lastGemini.content }, plan);
             setMessages(prev => prev.filter(m => m.id !== `multa-typing-${Date.now()}`));
-            setMessages(prev => [...prev, { id: `summary-${Date.now()}`, author: 'multa', content: `**Summary of last responses:**\n\n${result.summary}` }]);
+            const summaryMessage = { id: `summary-${Date.now()}`, author: 'multa' as const, content: `**Summary of last responses:**\n\n${result.summary}` };
+            setMessages(prev => [...prev, summaryMessage]);
+            postMessage(summaryMessage);
           } catch (error) {
             setMessages(prev => prev.filter(m => m.id !== `multa-typing-${Date.now()}`));
             toast({ variant: "destructive", title: "Error", description: "Failed to summarize." });
@@ -129,11 +178,17 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
       callGeminiAgent(messageText, plan)
     ]);
 
+    const gptMessage = { id: `gpt-${Date.now()}`, author: 'gpt' as const, content: gptResponse };
+    const geminiMessage = { id: `gemini-${Date.now() + 1}`, author: 'gemini' as const, content: geminiResponse };
+
     setMessages(prev => [
       ...prev,
-      { id: `gpt-${Date.now()}`, author: 'gpt', content: gptResponse },
-      { id: `gemini-${Date.now() + 1}`, author: 'gemini', content: geminiResponse }
+      gptMessage,
+      geminiMessage
     ]);
+    
+    postMessage(gptMessage);
+    postMessage(geminiMessage);
     
     setGptTyping(false);
     setGeminiTyping(false);
