@@ -12,10 +12,14 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import ChatLayout from '@/components/chat/ChatLayout';
 import { ChatProvider, useChat } from '@/context/ChatContext';
+import RenameChatDialog from '@/components/chat/RenameChatDialog';
+import type { ChatIndexItem } from '@/lib/types';
+
 
 function ChatHistory() {
-  const { chats, activeChatId, setActiveChatId, isLoading, createNewChat, togglePinChat } = useChat();
+  const { chats, activeChatId, setActiveChatId, isLoading, createNewChat, togglePinChat, renameChat } = useChat();
   const [searchTerm, setSearchTerm] = useState('');
+  const [renamingChat, setRenamingChat] = useState<ChatIndexItem | null>(null);
 
   const filteredChats = useMemo(() => {
     const list = chats ?? [];
@@ -31,7 +35,18 @@ function ChatHistory() {
   
   const handlePinToggle = (chatId: string) => {
     togglePinChat(chatId);
-  }
+  };
+
+  const handleRename = (chat: ChatIndexItem) => {
+    setRenamingChat(chat);
+  };
+
+  const handleRenameSave = (newName: string) => {
+    if (renamingChat) {
+      renameChat(renamingChat.id, newName);
+    }
+  };
+
 
   const renderChatList = () => {
     return filteredChats?.map((chat) => (
@@ -55,7 +70,7 @@ function ChatHistory() {
                 <Share2 className="size-4" />
                 <span>Share</span>
               </DropdownMenuItem>
-              <DropdownMenuItem className="gap-2">
+              <DropdownMenuItem className="gap-2" onClick={() => handleRename(chat)}>
                 <Pencil className="size-4" />
                 <span>Rename</span>
               </DropdownMenuItem>
@@ -105,13 +120,21 @@ function ChatHistory() {
           </SidebarMenu>
         </div>
       </div>
+      {renamingChat && (
+        <RenameChatDialog
+          chat={renamingChat}
+          isOpen={!!renamingChat}
+          onClose={() => setRenamingChat(null)}
+          onSave={handleRenameSave}
+        />
+      )}
     </div>
   )
 }
 
 function HomePageContent() {
   const { user, isUserLoading } = useUser();
-  const { activeChatId, setActiveChatId } = useChat();
+  const { activeChatId } = useChat();
   const [plan, setPlan] = useState<'free' | 'pro'>('free');
 
   const handleSignOut = async () => {

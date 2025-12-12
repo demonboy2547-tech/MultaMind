@@ -17,6 +17,7 @@ interface ChatContextType {
   createNewChat: () => void;
   saveNewChat: (chatId: string, title: string, messages: ChatMessage[]) => void;
   togglePinChat: (chatId: string) => void;
+  renameChat: (chatId: string, newTitle: string) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -38,7 +39,10 @@ async function getHeaders() {
 function sortChats(a: ChatIndexItem, b: ChatIndexItem): number {
     if (a.pinned && !b.pinned) return -1;
     if (!a.pinned && b.pinned) return 1;
-    return b.updatedAt - a.updatedAt;
+    // For items with the same pinned status, sort by updatedAt
+    const dateA = a.updatedAt || 0;
+    const dateB = b.updatedAt || 0;
+    return dateB - dateA;
 }
 
 
@@ -122,7 +126,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setMessagesLoading(false);
     };
     loadMessages();
-  }, [activeChatId, user]);
+  }, [activeChatId, user, chats]);
   
   // Effect to set initial active chat, or create a draft if none exists
   useEffect(() => {
@@ -214,18 +218,37 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const newPinnedState = !chatToUpdate.pinned;
     
     const updatedChats = chats.map(c => 
-        c.id === chatId ? { ...c, pinned: newPinnedState } : c
+        c.id === chatId ? { ...c, pinned: newPinnedState, updatedAt: Date.now() } : c
     ).sort(sortChats);
     
     setChats(updatedChats);
 
     if (user && firestore) {
         const chatRef = doc(firestore, 'chats', chatId);
-        await updateDoc(chatRef, { pinned: newPinnedState });
+        await updateDoc(chatRef, { pinned: newPinnedState, updatedAt: serverTimestamp() });
     } else {
         localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
     }
   }, [chats, user, firestore]);
+
+  const renameChat = useCallback(async (chatId: string, newTitle: string) => {
+    const chatIndex = chats.findIndex(c => c.id === chatId);
+    if (chatIndex === -1) return;
+
+    const updatedChats = chats.map(c =>
+      c.id === chatId ? { ...c, title: newTitle, updatedAt: Date.now() } : c
+    ).sort(sortChats);
+
+    setChats(updatedChats);
+
+    if (user && firestore) {
+      const chatRef = doc(firestore, 'chats', chatId);
+      await updateDoc(chatRef, { title: newTitle, updatedAt: serverTimestamp() });
+    } else {
+      localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
+    }
+  }, [chats, user, firestore]);
+
 
   const value = {
     chats,
@@ -238,6 +261,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     createNewChat,
     saveNewChat,
     togglePinChat,
+    renameChat,
   };
 
   return (
