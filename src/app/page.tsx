@@ -15,6 +15,7 @@ import { ChatProvider, useChat } from '@/context/ChatContext';
 import RenameChatDialog from '@/components/chat/RenameChatDialog';
 import DeleteChatDialog from '@/components/chat/DeleteChatDialog';
 import type { ChatIndexItem } from '@/lib/types';
+import { useToast } from "@/hooks/use-toast";
 
 
 function ChatHistory() {
@@ -22,6 +23,7 @@ function ChatHistory() {
   const [searchTerm, setSearchTerm] = useState('');
   const [renamingChat, setRenamingChat] = useState<ChatIndexItem | null>(null);
   const [deletingChat, setDeletingChat] = useState<ChatIndexItem | null>(null);
+  const { toast } = useToast();
 
   const filteredChats = useMemo(() => {
     const list = chats ?? [];
@@ -45,6 +47,16 @@ function ChatHistory() {
   
   const handleDelete = (chat: ChatIndexItem) => {
     setDeletingChat(chat);
+  };
+
+  const handleShare = (chat: ChatIndexItem) => {
+    const link = `${window.location.origin}?chat=${chat.id}`;
+    navigator.clipboard.writeText(link).then(() => {
+      toast({
+        title: "Link copied!",
+        description: "The chat link has been copied to your clipboard.",
+      });
+    });
   };
 
   const handleRenameSave = (newName: string) => {
@@ -79,7 +91,7 @@ function ChatHistory() {
                 <Pin className="size-4" />
                 <span>{chat.pinned ? 'Unpin' : 'Pin'}</span>
               </DropdownMenuItem>
-              <DropdownMenuItem className="gap-2">
+              <DropdownMenuItem className="gap-2" onClick={() => handleShare(chat)}>
                 <Share2 className="size-4" />
                 <span>Share</span>
               </DropdownMenuItem>
