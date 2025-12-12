@@ -5,7 +5,7 @@ import { SidebarProvider, Sidebar, SidebarTrigger, SidebarContent, SidebarFooter
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/firebase';
 import { getAuth, signOut } from 'firebase/auth';
-import { LogIn, LogOut, Plus, Search } from 'lucide-react';
+import { LogIn, LogOut, Plus, Search, MoreVertical, Pin, Share2, Pencil, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -17,6 +17,11 @@ function ChatHistory() {
   const { chats, activeChatId, setActiveChatId, isLoading, createNewChat } = useChat();
   const [searchTerm, setSearchTerm] = useState('');
 
+  const handleChatAction = (e: React.MouseEvent, action: () => void) => {
+    e.stopPropagation();
+    action();
+  };
+
   const filteredChats = useMemo(() => {
     if (!searchTerm) return chats;
     return chats?.filter(chat =>
@@ -27,8 +32,38 @@ function ChatHistory() {
   const renderChatList = () => {
     return filteredChats?.map((chat) => (
       <SidebarMenuItem key={chat.id}>
-        <SidebarMenuButton isActive={chat.id === activeChatId} className="h-8" onClick={() => setActiveChatId(chat.id)}>
+        <SidebarMenuButton isActive={chat.id === activeChatId} className="h-8 justify-between group" onClick={() => setActiveChatId(chat.id)}>
           <span className="truncate">{chat.title}</span>
+           <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MoreVertical className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="right" align="start">
+                <DropdownMenuItem onClick={(e) => handleChatAction(e, () => console.log('Pin/Unpin', chat.id))}>
+                  <Pin className="size-4 mr-2" />
+                  Pin/Unpin
+                </DropdownMenuItem>
+                 <DropdownMenuItem onClick={(e) => handleChatAction(e, () => console.log('Share', chat.id))}>
+                  <Share2 className="size-4 mr-2" />
+                  Share
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={(e) => handleChatAction(e, () => console.log('Rename', chat.id))}>
+                  <Pencil className="size-4 mr-2" />
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={(e) => handleChatAction(e, () => console.log('Delete', chat.id))} className="text-destructive">
+                  <Trash2 className="size-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
         </SidebarMenuButton>
       </SidebarMenuItem>
     ));
