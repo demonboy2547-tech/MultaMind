@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user of the MultaMind application.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the User entity."
+        },
+        "email": {
+          "type": "string",
+          "description": "Email address of the user.",
+          "format": "email"
+        }
+      },
+      "required": [
+        "id",
+        "email"
+      ]
+    },
+    "Session": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Session",
+      "type": "object",
+      "description": "Represents a user session, storing the user ID and optionally the ID token (though the ID token should be short-lived and handled carefully).",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Session entity."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to User. (Relationship: User 1:N Session)"
+        }
+      },
+      "required": [
+        "id",
+        "userId"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores user profile information.  Accessible only to the authenticated user with matching UID.  Path-based ownership ensures authorization independence.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique ID of the user, matching the Firebase Auth UID."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/sessions/{sessionId}",
+        "definition": {
+          "entityName": "Session",
+          "schema": {
+            "$ref": "#/backend/entities/Session"
+          },
+          "description": "Stores user session information.  Accessible only to the authenticated user with matching UID. Path-based ownership ensures authorization independence.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique ID of the user, matching the Firebase Auth UID."
+            },
+            {
+              "name": "sessionId",
+              "description": "The unique ID of the session."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore structure is designed to manage user data and sessions for the MultaMind application. It prioritizes security and scalability, adhering to the principles of Authorization Independence and Structural Segregation.\n\n*   **Authorization Independence:** The design focuses on path-based ownership for user data, eliminating the need for `get()` calls in security rules.  User documents and session documents are directly owned by the user ID derived from `request.auth.uid`.\n*   **Structural Segregation:** User-specific data (user profiles and sessions) is stored in collections segregated by user ID, ensuring homogeneous security posture within each collection. This simplifies security rules by making them context-specific to individual users.\n*   **QAPs:** The path-based ownership (`/users/{userId}`) inherently supports secure list operations (QAPs) as rules can easily filter based on the `userId` derived from authentication.\n\nThis structure facilitates simple and robust security rules, minimizing complexity and ensuring secure access to user data."
+  }
+}

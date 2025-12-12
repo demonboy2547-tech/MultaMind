@@ -1,0 +1,117 @@
+/**
+ * Core Philosophy: This ruleset enforces a strict user-ownership model where each user can only access data
+ * within their own user-specific document tree. Access control is based on the user's authenticated UID.
+ *
+ * Data Structure: All application data is segregated and nested under the `/users/{userId}` path. This
+ * structure ensures that all data, including profiles and sessions, is directly associated with a specific user,
+ * simplifying security and queries.
+ *
+ * Key Security Decisions:
+ * - User Isolation: A user can only read or write documents located under their own `/users/{userId}` path.
+ * - No Public Listing: Listing all users from the root `/users` collection is explicitly disallowed to protect user privacy.
+ * - Self-Creation: Authenticated users are permitted to create their own user profile document, but not for others.
+ * - Relational Integrity: On creation, key identifier fields within a document (e.g., `user.id`, `session.userId`)
+ *   are validated against the corresponding wildcard IDs in the document path to ensure data consistency. These
+ *   identifiers are immutable once set.
+ *
+ * Denormalization for Authorization: The data model is inherently designed for efficient authorization.
+ * By using the user's UID as the document ID in the path (`/users/{userId}`), we can enforce ownership without
+ * needing any slow or costly `get()` calls to other documents. This is a form of path-based denormalization.
+ *
+ * Structural Segregation: User-specific data (profiles, sessions) is structurally segregated into a
+ * user-owned subcollection tree. This approach provides stronger security guarantees and simplifies rules
+ * compared to storing mixed-privacy data in a single collection.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper Functions
+    
+    /**
+     * Checks if the user is authenticated.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * Checks if the currently authenticated user's UID matches the provided userId.
+     * This is the primary function for enforcing user ownership.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * Checks for ownership on an existing document. Used for update and delete operations
+     * to prevent writes to non-existent documents.
+     */
+    function isExistingOwner(userId) {
+      return isOwner(userId) && resource != null;
+    }
+
+    /**
+     * Validates that the incoming User document is being created correctly.
+     * Ensures the internal 'id' field matches the document's path ID.
+     */
+    function hasValidUserData_onCreate(userId) {
+      return request.resource.data.id == userId;
+    }
+
+    /**
+     * Validates that critical relational fields in a User document are not changed on update.
+     */
+    function hasValidUserData_onUpdate() {
+      return request.resource.data.id == resource.data.id;
+    }
+
+    /**
+     * Validates that the incoming Session document is being created correctly.
+     * Ensures internal IDs match the document's path.
+     */
+    function hasValidSessionData_onCreate(userId, sessionId) {
+      let data = request.resource.data;
+      return data.userId == userId && data.id == sessionId;
+    }
+
+    /**
+     * Validates that critical relational fields in a Session document are not changed on update.
+     */
+    function hasValidSessionData_onUpdate() {
+      let incomingData = request.resource.data;
+      let existingData = resource.data;
+      return incomingData.userId == existingData.userId && incomingData.id == existingData.id;
+    }
+
+    /**
+     * @description Controls access to a user's profile document.
+     * @path /users/{userId}
+     * @allow (get) An authenticated user reads their own profile. auth.uid == 'user_abc'.
+     * @deny (get) An authenticated user tries to read another user's profile. auth.uid == 'user_xyz'.
+     * @principle Restricts access to a user's own data tree.
+     */
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false; // Disallow listing all users for privacy.
+      allow create: if isOwner(userId) && hasValidUserData_onCreate(userId);
+      allow update: if isExistingOwner(userId) && hasValidUserData_onUpdate();
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description Controls access to a user's session documents.
+     * @path /users/{userId}/sessions/{sessionId}
+     * @allow (create) An authenticated user creates a new session document for themselves. auth.uid == 'user_abc'.
+     * @deny (list) An authenticated user tries to list sessions for another user. auth.uid == 'user_xyz'.
+     * @principle Enforces document ownership via the parent path.
+     */
+    match /users/{userId}/sessions/{sessionId} {
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) && hasValidSessionData_onCreate(userId, sessionId);
+      allow update: if isExistingOwner(userId) && hasValidSessionData_onUpdate();
+      allow delete: if isExistingOwner(userId);
+    }
+  }
+}
