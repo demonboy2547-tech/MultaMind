@@ -208,11 +208,7 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
   );
 
   return (
-    <div className="flex flex-col h-screen bg-background text-foreground">
-      <header className="flex items-center justify-between p-4 border-b">
-        <Logo />
-      </header>
-      
+    <div className="flex flex-col h-full bg-background text-foreground">      
       <main className="flex-1 overflow-hidden">
         {isMobile ? (
           <Tabs defaultValue="gpt" className="h-full flex flex-col">

@@ -1,58 +1,142 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
+import { useState, useMemo } from 'react';
 import ChatLayout from '@/components/chat/ChatLayout';
+import { SidebarProvider, Sidebar, SidebarTrigger, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { useUser } from '@/firebase';
-import { useRouter } from 'next/navigation';
+import { useCollection, useUser } from '@/firebase';
 import { getAuth, signOut } from 'firebase/auth';
+import { LogIn, LogOut, Plus, Search } from 'lucide-react';
+import Link from 'next/link';
+import { Input } from '@/components/ui/input';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
+import { collection, query, where } from 'firebase/firestore';
+import { useFirestore } from '@/firebase/provider';
+import type { Chat } from '@/lib/types';
+import { useMemoFirebase } from '@/firebase/provider';
+
+function ChatHistory() {
+  const { user } = useUser();
+  const firestore = useFirestore();
+
+  const chatsQuery = useMemoFirebase(() => {
+    if (!user || !firestore) return null;
+    return query(collection(firestore, 'chats'), where('userId', '==', user.uid));
+  }, [user, firestore]);
+
+  const { data: chats, isLoading } = useCollection<Chat>(chatsQuery);
+
+  const activeChatId = '2'; // Mock active chat
+
+  return (
+    <div className="flex flex-col gap-2 px-2">
+      <div className="relative">
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Input placeholder="Search chats..." className="w-full rounded-lg bg-background pl-8" />
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <span className="px-2 text-xs font-medium text-muted-foreground">Your Chats</span>
+          </SidebarMenuItem>
+          {isLoading && (
+            <>
+              <SidebarMenuItem><SidebarMenuButton className="h-8" asChild><div className="h-4 w-3/4 rounded-md bg-muted animate-pulse" /></SidebarMenuButton></SidebarMenuItem>
+              <SidebarMenuItem><SidebarMenuButton className="h-8" asChild><div className="h-4 w-1/2 rounded-md bg-muted animate-pulse" /></SidebarMenuButton></SidebarMenuItem>
+              <SidebarMenuItem><SidebarMenuButton className="h-8" asChild><div className="h-4 w-2/3 rounded-md bg-muted animate-pulse" /></SidebarMenuButton></SidebarMenuItem>
+            </>
+          )}
+          {chats?.map((chat) => (
+            <SidebarMenuItem key={chat.id}>
+              <SidebarMenuButton isActive={chat.id === activeChatId} className="h-8">
+                <span className="truncate">{chat.title}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </div>
+    </div>
+  )
+}
 
 export default function Home() {
   const [plan, setPlan] = useState<'free' | 'pro'>('free');
   const { user, isUserLoading } = useUser();
-  const router = useRouter();
 
   const handleSignOut = async () => {
     const auth = getAuth();
     await signOut(auth);
-    // After signing out, you might want to refresh the page or stay on it.
-    // For now, we'll just let the state update handle the UI change.
   };
 
-  if (isUserLoading) {
-    return <div>Loading...</div>;
+  const getInitials = (name?: string | null) => {
+    if (!name) return 'G';
+    const names = name.split(' ');
+    if (names.length > 1) {
+      return `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase();
+    }
+    return name[0].toUpperCase();
   }
 
   return (
-    <div className="flex flex-col h-screen">
-      <div className="absolute top-4 right-4 z-20 flex items-center space-x-4">
-        {user && (
-          <div className="flex items-center space-x-2">
-            <Switch
-              id="plan-switch"
-              checked={plan === 'pro'}
-              onCheckedChange={(checked) => setPlan(checked ? 'pro' : 'free')}
-              disabled={!user} // Disable if not logged in
-            />
-            <Label htmlFor="plan-switch" className="text-sm font-medium">
-              {plan === 'pro' ? 'Pro Plan' : 'Free Plan'}
-            </Label>
-          </div>
-        )}
-        {user ? (
-          <Button onClick={handleSignOut} variant="outline" size="sm">
-            Sign Out
-          </Button>
-        ) : (
-          <Button asChild variant="outline" size="sm">
-            <Link href="/login">Log in</Link>
-          </Button>
-        )}
+    <SidebarProvider>
+      <div className="flex h-screen w-full">
+        <Sidebar collapsible="offcanvas">
+          <SidebarHeader>
+            <Button variant="outline" className="w-full justify-start gap-2">
+              <Plus className="size-4" />
+              <span className="group-data-[collapsible=icon]:hidden">New Chat</span>
+            </Button>
+          </SidebarHeader>
+          <SidebarContent className="p-0">
+             <ChatHistory />
+          </SidebarContent>
+          <SidebarFooter className="p-2">
+            {isUserLoading ? (
+              <div className="flex items-center gap-2 p-2">
+                <div className="h-7 w-7 rounded-full bg-muted animate-pulse" />
+                <div className="h-4 w-20 rounded-md bg-muted animate-pulse group-data-[collapsible=icon]:hidden" />
+              </div>
+            ) : user ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="w-full justify-start gap-2 p-2 h-auto">
+                     <Avatar className="size-7">
+                        <AvatarImage src={user.photoURL || undefined} alt={user.displayName || 'User'} />
+                        <AvatarFallback>{getInitials(user.displayName)}</AvatarFallback>
+                      </Avatar>
+                      <div className="text-left group-data-[collapsible=icon]:hidden">
+                        <p className="text-xs font-medium truncate">{user.displayName || 'User'}</p>
+                        <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                      </div>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="right" align="start">
+                   <DropdownMenuItem onClick={handleSignOut} className="gap-2">
+                      <LogOut className="size-4"/>
+                      <span>Sign Out</span>
+                   </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button asChild variant="ghost" className="w-full justify-start gap-2">
+                <Link href="/login">
+                  <LogIn className="size-4" />
+                  <span className="group-data-[collapsible=icon]:hidden">Log in</span>
+                </Link>
+              </Button>
+            )}
+          </SidebarFooter>
+        </Sidebar>
+
+        <div className="flex flex-col flex-1">
+           <header className="flex h-12 items-center justify-start gap-2 border-b bg-background px-4 md:hidden">
+              <SidebarTrigger />
+              <h1 className="font-semibold">MultaMind</h1>
+            </header>
+          <ChatLayout plan={plan} />
+        </div>
       </div>
-      <ChatLayout plan={plan} />
-    </div>
+    </SidebarProvider>
   );
 }
