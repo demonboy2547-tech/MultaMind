@@ -14,12 +14,13 @@ import ChatLayout from '@/components/chat/ChatLayout';
 import { ChatProvider, useChat } from '@/context/ChatContext';
 
 function ChatHistory() {
-  const { chats, activeChatId, setActiveChatId, isLoading, createNewChat } = useChat();
+  const { chats, activeChatId, setActiveChatId, isLoading, createNewChat, togglePinChat } = useChat();
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredChats = useMemo(() => {
-    if (!searchTerm) return chats;
-    return chats?.filter(chat =>
+    const list = chats ?? [];
+    if (!searchTerm) return list;
+    return list.filter(chat =>
       chat.title.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [chats, searchTerm]);
@@ -27,11 +28,16 @@ function ChatHistory() {
   const handleMenuClick = (e: MouseEvent) => {
     e.stopPropagation();
   };
+  
+  const handlePinToggle = (chatId: string) => {
+    togglePinChat(chatId);
+  }
 
   const renderChatList = () => {
     return filteredChats?.map((chat) => (
       <SidebarMenuItem key={chat.id}>
         <SidebarMenuButton isActive={chat.id === activeChatId} className="h-8 justify-between" onClick={() => setActiveChatId(chat.id)}>
+          {chat.pinned && <Pin className="size-3 shrink-0" />}
           <span className="truncate flex-1 text-left">{chat.title}</span>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -41,9 +47,9 @@ function ChatHistory() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="right" align="start" onClick={handleMenuClick}>
-              <DropdownMenuItem className="gap-2">
+              <DropdownMenuItem className="gap-2" onClick={() => handlePinToggle(chat.id)}>
                 <Pin className="size-4" />
-                <span>Pin</span>
+                <span>{chat.pinned ? 'Unpin' : 'Pin'}</span>
               </DropdownMenuItem>
               <DropdownMenuItem className="gap-2">
                 <Share2 className="size-4" />
@@ -111,7 +117,7 @@ function HomePageContent() {
   const handleSignOut = async () => {
     const auth = getAuth();
     await signOut(auth);
-    setActiveChatId(null); // This will trigger context to reset to guest state
+    // The useUser hook will trigger a re-render and ChatContext will reset to guest state
   };
 
   const getInitials = (name?: string | null) => {

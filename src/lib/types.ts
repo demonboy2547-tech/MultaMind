@@ -24,7 +24,8 @@ export interface GuestChat {
 }
 
 export interface ChatIndexItem {
-    id: string;
+    id:string;
     title:string;
     updatedAt: number;
+    pinned?: boolean;
 }
