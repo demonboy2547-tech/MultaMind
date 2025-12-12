@@ -14,9 +14,23 @@ import { summarizeResponses } from '@/ai/flows/summarize-responses';
 import { reviewGptWithGemini, reviewGeminiWithGpt } from '@/lib/review';
 import ChatColumn from './ChatColumn';
 import ChatInput from './ChatInput';
+import { useAuth } from '@/firebase';
 
 interface ChatLayoutProps {
   plan: 'free' | 'pro';
+}
+
+async function getHeaders() {
+  const auth = useAuth();
+  const user = auth.currentUser;
+  if (user) {
+    const token = await user.getIdToken();
+    return {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    };
+  }
+  return { 'Content-Type': 'application/json' };
 }
 
 export default function ChatLayout({ plan }: ChatLayoutProps) {
@@ -26,6 +40,7 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
   const [isGeminiTyping, setGeminiTyping] = useState(false);
   const isMobile = useIsMobile();
   const { toast } = useToast();
+  const auth = useAuth();
 
   const handleSendMessage = async (e: FormEvent) => {
     e.preventDefault();

@@ -1,6 +1,9 @@
 'use server';
 
 import { getModelsForPlan } from './plan';
+import { getAuth } from 'firebase/auth';
+import { headers } from 'next/headers';
+
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -15,6 +18,10 @@ async function callOpenRouter(
   model: string,
   messages: AgentMessage[],
 ): Promise<string> {
+
+  const headersList = headers();
+  const authorization = headersList.get('authorization');
+
   const res = await fetch(OPENROUTER_URL, {
     method: 'POST',
     headers: {
