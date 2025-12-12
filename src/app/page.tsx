@@ -13,10 +13,15 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import ChatLayout from '@/components/chat/ChatLayout';
 import { ChatProvider, useChat } from '@/context/ChatContext';
 import { cn } from '@/lib/utils';
+import { RenameChatDialog } from '@/components/chat/RenameChatDialog';
+import type { ChatIndexItem } from '@/lib/types';
+
 
 function ChatHistory() {
-  const { chats, activeChatId, setActiveChatId, isLoading, createNewChat, togglePinChat } = useChat();
+  const { chats, activeChatId, setActiveChatId, isLoading, createNewChat, togglePinChat, renameChat } = useChat();
   const [searchTerm, setSearchTerm] = useState('');
+  const [renameTargetChat, setRenameTargetChat] = useState<ChatIndexItem | null>(null);
+
 
   const handleChatAction = (e: React.MouseEvent, action: () => void) => {
     e.stopPropagation();
@@ -58,7 +63,7 @@ function ChatHistory() {
                   <Share2 className="size-4 mr-2" />
                   Share
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={(e) => handleChatAction(e, () => console.log('Rename', chat.id))}>
+                <DropdownMenuItem onClick={(e) => handleChatAction(e, () => setRenameTargetChat(chat))}>
                   <Pencil className="size-4 mr-2" />
                   Rename
                 </DropdownMenuItem>
@@ -74,40 +79,56 @@ function ChatHistory() {
   }
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
-      <SidebarHeader>
-        <Button variant="outline" className="w-full justify-start gap-2" onClick={createNewChat}>
-          <Plus className="size-4" />
-          <span className="group-data-[collapsible=icon]:hidden">New Chat</span>
-        </Button>
-      </SidebarHeader>
-      <div className="flex flex-col gap-2 p-2 flex-1 overflow-y-auto">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input 
-            placeholder="Search chats..." 
-            className="w-full rounded-lg bg-background pl-8" 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <span className="px-2 text-xs font-medium text-muted-foreground">Your Chats</span>
-            </SidebarMenuItem>
-            {isLoading && (
-              <>
-                <SidebarMenuItem><SidebarMenuButton className="h-8" asChild><div className="h-4 w-3/4 rounded-md bg-muted animate-pulse" /></SidebarMenuButton></SidebarMenuItem>
-                <SidebarMenuItem><SidebarMenuButton className="h-8" asChild><div className="h-4 w-1/2 rounded-md bg-muted animate-pulse" /></SidebarMenuButton></SidebarMenuItem>
-                <SidebarMenuItem><SidebarMenuButton className="h-8" asChild><div className="h-4 w-2/3 rounded-md bg-muted animate-pulse" /></SidebarMenuButton></SidebarMenuItem>
-              </>
-            )}
-            {renderChatList()}
-          </SidebarMenu>
+    <>
+      <div className="flex flex-col flex-1 overflow-hidden">
+        <SidebarHeader>
+          <Button variant="outline" className="w-full justify-start gap-2" onClick={createNewChat}>
+            <Plus className="size-4" />
+            <span className="group-data-[collapsible=icon]:hidden">New Chat</span>
+          </Button>
+        </SidebarHeader>
+        <div className="flex flex-col gap-2 p-2 flex-1 overflow-y-auto">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input 
+              placeholder="Search chats..." 
+              className="w-full rounded-lg bg-background pl-8" 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <span className="px-2 text-xs font-medium text-muted-foreground">Your Chats</span>
+              </SidebarMenuItem>
+              {isLoading && (
+                <>
+                  <SidebarMenuItem><SidebarMenuButton className="h-8" asChild><div className="h-4 w-3/4 rounded-md bg-muted animate-pulse" /></SidebarMenuButton></SidebarMenuItem>
+                  <SidebarMenuItem><SidebarMenuButton className="h-8" asChild><div className="h-4 w-1/2 rounded-md bg-muted animate-pulse" /></SidebarMenuButton></SidebarMenuItem>
+                  <SidebarMenuItem><SidebarMenuButton className="h-8" asChild><div className="h-4 w-2/3 rounded-md bg-muted animate-pulse" /></SidebarMenuButton></SidebarMenuItem>
+                </>
+              )}
+              {renderChatList()}
+            </SidebarMenu>
+          </div>
         </div>
       </div>
-    </div>
+      {renameTargetChat && (
+        <RenameChatDialog
+          chat={renameTargetChat}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) {
+              setRenameTargetChat(null);
+            }
+          }}
+          onSave={(newTitle) => {
+            renameChat(renameTargetChat.id, newTitle);
+            setRenameTargetChat(null);
+          }}
+        />
+      )}
+    </>
   )
 }
 

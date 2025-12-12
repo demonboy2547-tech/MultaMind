@@ -17,6 +17,7 @@ interface ChatContextType {
   createNewChat: () => void;
   saveNewChat: (chatId: string, title: string, messages: ChatMessage[]) => void;
   togglePinChat: (chatId: string) => void;
+  renameChat: (chatId: string, newTitle: string) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -40,7 +41,11 @@ const sortChats = (chats: ChatIndexItem[]): ChatIndexItem[] => {
   return [...chats].sort((a, b) => {
     if (a.pinned && !b.pinned) return -1;
     if (!a.pinned && b.pinned) return 1;
-    return b.updatedAt - a.updatedAt;
+    // Assuming updatedAt is a timestamp number.
+    // If it can be a Firestore Timestamp object, you need to handle that.
+    const dateA = (a.updatedAt as any)?.seconds ? new Date((a.updatedAt as any).seconds * 1000) : new Date(a.updatedAt);
+    const dateB = (b.updatedAt as any)?.seconds ? new Date((b.updatedAt as any).seconds * 1000) : new Date(b.updatedAt);
+    return dateB.getTime() - dateA.getTime();
   });
 };
 
@@ -63,7 +68,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // Effect to load chats from Firestore or localStorage
   useEffect(() => {
     if (user && firestoreChats) {
-      setChats(sortChats(firestoreChats));
+      const formattedChats = firestoreChats.map(c => ({
+        ...c,
+        // Ensure updatedAt is a number for consistent sorting
+        updatedAt: (c.updatedAt as any)?.seconds ? (c.updatedAt as any).seconds * 1000 : c.updatedAt
+      }))
+      setChats(sortChats(formattedChats));
     } else if (!user) {
       const storedChats = localStorage.getItem('guestChatsIndex');
       if (storedChats) {
@@ -206,6 +216,28 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   }, [chats, user, firestore]);
 
+  const renameChat = useCallback(async (chatId: string, newTitle: string) => {
+    const chat = chats.find(c => c.id === chatId);
+    if (!chat || chat.title === newTitle) return;
+
+    const updatedChats = chats.map(c => c.id === chatId ? { ...c, title: newTitle } : c);
+    setChats(updatedChats); // No re-sorting needed as title doesn't affect order
+
+    if (user && firestore) {
+      try {
+        const chatRef = doc(firestore, 'chats', chatId);
+        await updateDoc(chatRef, { title: newTitle });
+      } catch (error) {
+        console.error("Error renaming chat in Firestore:", error);
+        // Revert UI change on error
+        setChats(chats);
+      }
+    } else { // Guest user
+      localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
+    }
+  }, [chats, user, firestore]);
+
+
   const value = {
     chats,
     activeChatId,
@@ -217,6 +249,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     createNewChat,
     saveNewChat,
     togglePinChat,
+    renameChat,
   };
 
   return (
