@@ -21,6 +21,7 @@ function ChatHistory({ activeChatId, setActiveChatId }: { activeChatId: string |
   const { user } = useUser();
   const firestore = useFirestore();
   const [guestChats, setGuestChats] = useState<GuestChat[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const chatsQuery = useMemoFirebase(() => {
     if (!user || !firestore) return null;
@@ -44,9 +45,23 @@ function ChatHistory({ activeChatId, setActiveChatId }: { activeChatId: string |
     setActiveChatId(id);
   }
 
+  const filteredChats = useMemo(() => {
+    if (!searchTerm) return chats;
+    return chats?.filter(chat =>
+      chat.title.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [chats, searchTerm]);
+
+  const filteredGuestChats = useMemo(() => {
+    if (!searchTerm) return guestChats;
+    return guestChats.filter(chat =>
+      chat.title.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [guestChats, searchTerm]);
+
   const renderChatList = () => {
     if (user) {
-       return chats?.map((chat) => (
+       return filteredChats?.map((chat) => (
         <SidebarMenuItem key={chat.id}>
           <SidebarMenuButton isActive={chat.id === activeChatId} className="h-8" onClick={() => handleSelectChat(chat.id)}>
             <span className="truncate">{chat.title}</span>
@@ -54,7 +69,7 @@ function ChatHistory({ activeChatId, setActiveChatId }: { activeChatId: string |
         </SidebarMenuItem>
       ));
     } else {
-       return guestChats.map((chat) => (
+       return filteredGuestChats.map((chat) => (
          <SidebarMenuItem key={chat.id}>
            <SidebarMenuButton isActive={chat.id === activeChatId} className="h-8" onClick={() => handleSelectChat(chat.id)}>
              <span className="truncate">{chat.title}</span>
@@ -68,7 +83,12 @@ function ChatHistory({ activeChatId, setActiveChatId }: { activeChatId: string |
     <div className="flex flex-col gap-2 px-2">
       <div className="relative">
         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Search chats..." className="w-full rounded-lg bg-background pl-8" />
+        <Input 
+          placeholder="Search chats..." 
+          className="w-full rounded-lg bg-background pl-8" 
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
       </div>
       <div className="flex-1 overflow-y-auto">
         <SidebarMenu>
