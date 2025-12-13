@@ -3,88 +3,37 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper Functions
+    // Helper function to check if a user is signed in.
     function isSignedIn() {
       return request.auth != null;
     }
 
+    // Helper function to check if the request is from the owner of the document.
     function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-    
-    function isExistingOwner(userId) {
-      return isOwner(userId) && resource != null;
-    }
-
-    // Validation function for creating a new user profile
-    function hasValidUserData_onCreate(userId) {
-      let data = request.resource.data;
-      // On creation, ID must match UID, plan must be 'free', and memory must be empty or non-existent
-      return data.id == userId && 
-             data.plan == 'free' &&
-             (!('userMemory' in data) || data.userMemory == '');
-    }
-
-    // Validation function for updating a user profile
-    function hasValidUserData_onUpdate() {
-      let incomingData = request.resource.data;
-      let existingData = resource.data;
-      // Allow only userMemory to be updated. ID and plan are immutable.
-      return incomingData.id == existingData.id &&
-             incomingData.plan == existingData.plan &&
-             'userMemory' in incomingData &&
-             incomingData.createdAt == existingData.createdAt;
-    }
-    
-    // Validation function for creating a new chat document
-    function hasValidChatData_onCreate(userId) {
-        let data = request.resource.data;
-        // On creation, userId must match the user's UID and chatMemory must be empty or non-existent
-        return data.userId == userId &&
-               (!('chatMemory' in data) || data.chatMemory == '');
-    }
-
-    // Validation for updating a chat document
-    function hasValidChatData_onUpdate() {
-        let incomingData = request.resource.data;
-        let existingData = resource.data;
-        // Ensure the userId is not changed, but other fields like title, pinned, or chatMemory can be updated.
-        return incomingData.userId == existingData.userId;
-    }
-    
-    // Validation for creating a message document
-    function hasValidMessageData_onCreate(chatId) {
-      let data = request.resource.data;
-      // Ensure the message is being added to the correct chat
-      return data.chatId == chatId;
+      return request.auth.uid == userId;
     }
 
     // Rules for the /users collection
     match /users/{userId} {
-      // A user can get, create, update, or delete their own user document
-      allow get: if isOwner(userId);
-      allow create: if isOwner(userId) && hasValidUserData_onCreate(userId);
-      allow update: if isExistingOwner(userId) && hasValidUserData_onUpdate();
-      allow delete: if isExistingOwner(userId); // Allows user to delete their own account data
-      
-      // A user cannot list all other users
-      allow list: if false;
+      // A user can read, create, and update their own user document.
+      allow get, update: if isSignedIn() && isOwner(userId);
+      // A user can create their own document if the `id` in the document matches their auth UID.
+      allow create: if isSignedIn() && isOwner(userId) && request.resource.data.id == userId;
+      // Users cannot list other users or delete their own record through the client.
+      allow list, delete: if false;
 
       // Rules for the user's chats subcollection
       match /chats/{chatId} {
-        // A user can perform all operations on their own chats
-        allow get, list, delete: if isOwner(userId);
-        allow create: if isOwner(userId) && hasValidChatData_onCreate(userId);
-        allow update: if isOwner(userId) && hasValidChatData_onUpdate();
+        // The owner can perform all operations on their own chats.
+        allow read, list, create, update, delete: if isSignedIn() && isOwner(userId);
 
         // Rules for the messages subcollection within a chat
         match /messages/{messageId} {
-          // A user can read and create messages in their own chats
-          allow get, list: if isOwner(userId);
-          allow create: if isOwner(userId) && hasValidMessageData_onCreate(chatId);
-
-          // Messages are immutable once created; they cannot be updated or deleted.
-          allow update, delete: if false; 
+          // The owner can read, list, and create messages in their own chats.
+          allow read, list, create: if isSignedIn() && isOwner(userId);
+          
+          // Messages are immutable; they cannot be updated or deleted by the client.
+          allow update, delete: if false;
         }
       }
     }
