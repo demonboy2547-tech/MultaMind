@@ -32,7 +32,8 @@ service cloud.firestore {
       // Allow only userMemory to be updated. ID and plan are immutable.
       return incomingData.id == existingData.id &&
              incomingData.plan == existingData.plan &&
-             'userMemory' in incomingData;
+             'userMemory' in incomingData &&
+             incomingData.createdAt == existingData.createdAt;
     }
     
     // Validation function for creating a new chat document

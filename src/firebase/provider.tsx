@@ -2,7 +2,7 @@
 
 import React, { DependencyList, createContext, useContext, ReactNode, useMemo, useState, useEffect } from 'react';
 import { FirebaseApp } from 'firebase/app';
-import { Firestore, doc, getDoc, setDoc } from 'firebase/firestore';
+import { Firestore, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { Auth, User, onAuthStateChanged } from 'firebase/auth';
 import { FirebaseErrorListener } from '@/components/FirebaseErrorListener'
 
@@ -69,6 +69,8 @@ const ensureUserDocument = async (firestore: Firestore, user: User) => {
         email: user.email,
         plan: 'free',
         userMemory: '', // Initialize with empty memory
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
     }
   } catch (error) {
