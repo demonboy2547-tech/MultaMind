@@ -69,19 +69,22 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // Effect to load chats from Firestore or localStorage
   useEffect(() => {
     if (user && firestoreChats) {
-      const sortedChats = [...firestoreChats].sort(sortChats);
-      setChats(sortedChats);
+      setChats(firestoreChats); // Set unsorted chats, sorting happens in useMemo
     } else if (!user) {
       const storedChats = localStorage.getItem('guestChatsIndex');
       if (storedChats) {
         const parsedChats: ChatIndexItem[] = JSON.parse(storedChats);
-        parsedChats.sort(sortChats);
         setChats(parsedChats);
       } else {
         setChats([]);
       }
     }
   }, [user, firestoreChats]);
+  
+  const sortedChats = React.useMemo(() => {
+    // Create a new sorted array from the chats state
+    return [...chats].sort(sortChats);
+  }, [chats]);
   
   // Effect to load messages when activeChatId changes
   useEffect(() => {
@@ -136,13 +139,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       // If there's an active chat already, don't change it.
       if (activeChatId) return;
 
-      if (chats.length > 0) {
-          setActiveChatIdState(chats[0].id);
+      if (sortedChats.length > 0) {
+          setActiveChatIdState(sortedChats[0].id);
       } else {
           // Creates an initial draft chat on first load if no chats exist
           createNewChat();
       }
-  }, [chats, activeChatId, isChatsLoading]);
+  }, [sortedChats, activeChatId, isChatsLoading]);
 
 
   const setActiveChatId = (id: string | null) => {
@@ -198,13 +201,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
               await batch.commit();
 
               // The useCollection hook will refetch, but we can optimistically update UI
-              setChats(prevChats => [newChatIndexItem, ...prevChats].sort(sortChats));
+              setChats(prevChats => [newChatIndexItem, ...prevChats]);
 
           } catch (error) {
               console.error("Error saving new chat to Firestore:", error);
           }
       } else { // Guest user
-          const updatedChats = [newChatIndexItem, ...chats].sort(sortChats);
+          const updatedChats = [newChatIndexItem, ...chats];
           setChats(updatedChats);
           localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
           localStorage.setItem(`guestChat:${chatId}`, JSON.stringify(updatedMessages));
@@ -220,7 +223,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     
     const updatedChats = chats.map(c => 
         c.id === chatId ? { ...c, pinned: newPinnedState, updatedAt: Date.now() } : c
-    ).sort(sortChats);
+    );
     
     setChats(updatedChats);
 
@@ -238,7 +241,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     const updatedChats = chats.map(c =>
       c.id === chatId ? { ...c, title: newTitle, updatedAt: Date.now() } : c
-    ).sort(sortChats);
+    );
 
     setChats(updatedChats);
 
@@ -285,7 +288,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
 
   const value = {
-    chats,
+    chats: sortedChats,
     activeChatId,
     messages,
     isLoading: isChatsLoading,
