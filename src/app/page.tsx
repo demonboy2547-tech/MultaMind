@@ -37,9 +37,9 @@ function ChatHistory() {
     e.stopPropagation();
   };
   
-  const handlePinToggle = (e: MouseEvent, chatId: string) => {
+  const handlePinToggle = async (e: MouseEvent, chatId: string) => {
     e.stopPropagation();
-    togglePinChat(chatId);
+    await togglePinChat(chatId);
   };
 
   const handleRename = (e: MouseEvent, chat: ChatIndexItem) => {
@@ -63,15 +63,15 @@ function ChatHistory() {
     });
   };
 
-  const handleRenameSave = (newName: string) => {
+  const handleRenameSave = async (newName: string) => {
     if (renamingChat) {
-      renameChat(renamingChat.id, newName);
+      await renameChat(renamingChat.id, newName);
     }
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (deletingChat) {
-      deleteChat(deletingChat.id);
+      await deleteChat(deletingChat.id);
       setDeletingChat(null);
     }
   };
@@ -80,14 +80,23 @@ function ChatHistory() {
   const renderChatList = () => {
     return filteredChats?.map((chat) => (
       <SidebarMenuItem key={chat.id}>
-        <div className="flex items-center">
-            <SidebarMenuButton isActive={chat.id === activeChatId} className="h-8 justify-start flex-1" onClick={() => setActiveChatId(chat.id)}>
+        <div className="flex items-center group">
+            <SidebarMenuButton 
+              isActive={chat.id === activeChatId} 
+              className="h-8 justify-start flex-1" 
+              onClick={() => setActiveChatId(chat.id)}
+            >
               {chat.pinned && <Pin className="size-3 shrink-0" />}
               <span className="truncate flex-1 text-left ml-2">{chat.title}</span>
             </SidebarMenuButton>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={handleMenuClick}>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100" 
+                  onClick={handleMenuClick}
+                >
                   <MoreVertical className="size-4" />
                   <span className="sr-only">More options</span>
                 </Button>
