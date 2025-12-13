@@ -62,14 +62,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     return query(collection(firestore, 'chats'), where('userId', '==', user.uid), orderBy('updatedAt', 'desc'));
   }, [user, firestore]);
 
-  const { data: firestoreChats, isLoading: isChatsLoading } = useCollection<ChatIndexItem>(chatsQuery, {
-      transform: (data) => ({...data, updatedAt: (data.updatedAt as Timestamp)?.toMillis() || Date.now()})
-  });
-
+  const { data: firestoreChats, isLoading: isChatsLoading } = useCollection<ChatIndexItem>(chatsQuery);
+  
   // Effect to load chats from Firestore or localStorage
   useEffect(() => {
     if (user && firestoreChats) {
-      setChats(firestoreChats); // Set unsorted chats, sorting happens in useMemo
+      const transformedChats = firestoreChats.map(c => ({...c, updatedAt: (c.updatedAt as unknown as Timestamp)?.toMillis() || Date.now() }));
+      setChats(transformedChats); 
     } else if (!user) {
       const storedChats = localStorage.getItem('guestChatsIndex');
       if (storedChats) {
@@ -215,71 +214,81 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, [user, firestore, chats]);
 
   const togglePinChat = useCallback(async (chatId: string) => {
-    const chatIndex = chats.findIndex(c => c.id === chatId);
-    if (chatIndex === -1) return;
+    setChats(prevChats => {
+      const chatToUpdate = prevChats.find(c => c.id === chatId);
+      if (!chatToUpdate) return prevChats;
 
-    const chatToUpdate = chats[chatIndex];
-    const newPinnedState = !chatToUpdate.pinned;
-    
-    const updatedChats = chats.map(c => 
-        c.id === chatId ? { ...c, pinned: newPinnedState, updatedAt: Date.now() } : c
-    );
-    
-    setChats(updatedChats);
+      const newPinnedState = !chatToUpdate.pinned;
+      const updatedChats = prevChats.map(c => 
+          c.id === chatId ? { ...c, pinned: newPinnedState, updatedAt: Date.now() } : c
+      );
 
-    if (user && firestore) {
-        const chatRef = doc(firestore, 'chats', chatId);
-        await updateDoc(chatRef, { pinned: newPinnedState, updatedAt: serverTimestamp() });
-    } else {
-        localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
-    }
-  }, [chats, user, firestore]);
+      if (user && firestore) {
+          const chatRef = doc(firestore, 'chats', chatId);
+          updateDoc(chatRef, { pinned: newPinnedState, updatedAt: serverTimestamp() }).catch(console.error);
+      } else {
+          localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
+      }
+      
+      return updatedChats;
+    });
+  }, [user, firestore]);
 
   const renameChat = useCallback(async (chatId: string, newTitle: string) => {
-    const chatIndex = chats.findIndex(c => c.id === chatId);
-    if (chatIndex === -1) return;
+    setChats(prevChats => {
+      const updatedChats = prevChats.map(c =>
+        c.id === chatId ? { ...c, title: newTitle, updatedAt: Date.now() } : c
+      );
 
-    const updatedChats = chats.map(c =>
-      c.id === chatId ? { ...c, title: newTitle, updatedAt: Date.now() } : c
-    );
-
-    setChats(updatedChats);
-
-    if (user && firestore) {
-      const chatRef = doc(firestore, 'chats', chatId);
-      await updateDoc(chatRef, { title: newTitle, updatedAt: serverTimestamp() });
-    } else {
-      localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
-    }
-  }, [chats, user, firestore]);
+      if (user && firestore) {
+        const chatRef = doc(firestore, 'chats', chatId);
+        updateDoc(chatRef, { title: newTitle, updatedAt: serverTimestamp() }).catch(console.error);
+      } else {
+        localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
+      }
+      
+      return updatedChats;
+    });
+  }, [user, firestore]);
 
   const deleteChat = useCallback(async (chatId: string) => {
-    const remainingChats = sortedChats.filter(c => c.id !== chatId);
-    
-    if (user && firestore) {
-        try {
-            const chatRef = doc(firestore, 'chats', chatId);
-            await deleteDoc(chatRef);
-        } catch (error) {
-            console.error("Error deleting chat from Firestore:", error);
-            // Revert UI state if firestore deletion fails, by not setting chats.
-            return; 
+    // Optimistically update the UI by filtering based on the current state
+    let nextActiveChatId: string | null = null;
+
+    setChats(prevChats => {
+      const remainingChats = prevChats.filter(c => c.id !== chatId);
+
+      // Determine the next active chat ID
+      if (activeChatId === chatId) {
+        if (remainingChats.length > 0) {
+          // The sortedChats memo will update, but we can calculate it here for immediate use.
+          const newSortedChats = [...remainingChats].sort(sortChats);
+          nextActiveChatId = newSortedChats[0]?.id || null;
+        } else {
+          nextActiveChatId = 'new'; // Signal to create a new chat
         }
-    } else {
+      }
+      
+      // Persist the changes
+      if (user && firestore) {
+        const chatRef = doc(firestore, 'chats', chatId);
+        deleteDoc(chatRef).catch(console.error);
+      } else {
         localStorage.removeItem(`guestChat:${chatId}`);
         localStorage.setItem('guestChatsIndex', JSON.stringify(remainingChats));
+      }
+
+      return remainingChats;
+    });
+    
+    // Update active chat ID outside the `setChats` updater
+    if (nextActiveChatId === 'new') {
+      createNewChat();
+    } else if (nextActiveChatId) {
+      setActiveChatId(nextActiveChatId);
     }
 
-    setChats(remainingChats);
-
-    if (activeChatId === chatId) {
-        if (remainingChats.length > 0) {
-            setActiveChatId(remainingChats[0].id);
-        } else {
-            createNewChat();
-        }
-    }
-  }, [sortedChats, user, firestore, activeChatId, createNewChat]);
+  }, [user, firestore, activeChatId, createNewChat]);
 
 
   const value = {
