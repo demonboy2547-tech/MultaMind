@@ -3,7 +3,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
-import { collection, query, addDoc, serverTimestamp, getDocs, updateDoc, doc, writeBatch, Timestamp, setDoc, orderBy, deleteDoc } from 'firebase/firestore';
+import { collection, query, addDoc, serverTimestamp, getDocs, updateDoc, doc, writeBatch, Timestamp, setDoc, orderBy, deleteDoc, where } from 'firebase/firestore';
 import type { ChatMessage, ChatIndexItem } from '@/lib/types';
 import { useCollection } from '@/firebase/firestore/use-collection';
 
@@ -322,7 +322,3 @@ export function useChat() {
   }
   return context;
 }
-
-    
-
-    
