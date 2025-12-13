@@ -1,5 +1,6 @@
 
 
+
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
@@ -67,8 +68,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   }, [user, firestoreChats]);
   
-  const sortedChats = React.useMemo(() => {
-    return [...chats].sort(chatSortComparator);
+  const sortedAndDeduplicatedChats = React.useMemo(() => {
+    const chatMap = new Map<string, ChatIndexItem>();
+    chats.forEach(chat => {
+        // This ensures that for any given ID, we only have one entry in the map.
+        // If duplicates exist, the last one seen will overwrite previous ones.
+        chatMap.set(chat.id, chat);
+    });
+    const uniqueChats = Array.from(chatMap.values());
+    return uniqueChats.sort(chatSortComparator);
   }, [chats]);
   
   // Effect to load messages when activeChatId changes
@@ -108,18 +116,22 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, [activeChatId, user, firestore, chats]);
   
   const createNewChat = useCallback(() => {
-    const newChatId = user && firestore ? doc(collection(firestore, 'users', user.uid, 'chats')).id : `guest-${Date.now()}`;
+    // Use crypto.randomUUID for a more robust unique ID
+    const newChatId = user && firestore 
+      ? doc(collection(firestore, 'users', user.uid, 'chats')).id 
+      : crypto.randomUUID();
+
+    const newChat: ChatIndexItem = {
+      id: newChatId,
+      title: 'New Chat',
+      updatedAt: Date.now(),
+      pinned: false,
+    };
     
     // For guest users, immediately add a temporary chat to the list to avoid key errors
     if (!user) {
-        const newGuestChat: ChatIndexItem = {
-            id: newChatId,
-            title: "New Chat",
-            updatedAt: Date.now(),
-            pinned: false
-        };
         // Use a function for state update to get the latest `chats` state
-        setChats(prevChats => [newGuestChat, ...prevChats]);
+        setChats(prevChats => [newChat, ...prevChats]);
     }
     
     setActiveChatIdState(newChatId);
@@ -131,13 +143,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       if (activeChatId) return; // Don't do anything if a chat is already active
 
       // If there's no active chat, select the first one from the sorted list.
-      if (sortedChats.length > 0) {
-          setActiveChatIdState(sortedChats[0].id);
+      if (sortedAndDeduplicatedChats.length > 0) {
+          setActiveChatIdState(sortedAndDeduplicatedChats[0].id);
       } else {
           // If there are no chats at all, create a new one.
           createNewChat();
       }
-  }, [sortedChats, activeChatId, isChatsLoading, createNewChat]);
+  }, [sortedAndDeduplicatedChats, activeChatId, isChatsLoading, createNewChat]);
 
 
   const setActiveChatId = (id: string | null) => {
@@ -194,9 +206,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       } else {
           // Logic for guest users (localStorage)
           const now = Date.now();
-          const updatedChats = chats.map(c => c.id === chatId ? {...c, title, updatedAt: now} : c);
           
-          if (!isExistingChat) {
+          let chatExists = false;
+          const updatedChats = chats.map(c => {
+            if (c.id === chatId) {
+                chatExists = true;
+                return {...c, title, updatedAt: now };
+            }
+            return c;
+          });
+          
+          if (!chatExists) {
               const newChatIndexItem: ChatIndexItem = { id: chatId, title, updatedAt: now, pinned: false };
               updatedChats.unshift(newChatIndexItem);
           }
@@ -263,8 +283,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
 
   const deleteChat = useCallback(async (chatId: string) => {
-    const currentIndex = sortedChats.findIndex(c => c.id === chatId);
-    const remainingChats = sortedChats.filter(c => c.id !== chatId);
+    const currentIndex = sortedAndDeduplicatedChats.findIndex(c => c.id === chatId);
+    const remainingChats = sortedAndDeduplicatedChats.filter(c => c.id !== chatId);
     
     // Optimistically update UI
     setChats(remainingChats);
@@ -301,11 +321,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
        // NOTE: You could revert the optimistic update here on failure.
        // For simplicity, we're not adding that right now.
     }
-  }, [user, firestore, activeChatId, createNewChat, setActiveChatId, sortedChats]);
+  }, [user, firestore, activeChatId, createNewChat, setActiveChatId, sortedAndDeduplicatedChats]);
 
 
   const value = {
-    chats: sortedChats,
+    chats: sortedAndDeduplicatedChats,
     activeChatId,
     messages,
     isLoading: isChatsLoading,
