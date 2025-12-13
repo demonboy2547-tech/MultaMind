@@ -81,7 +81,7 @@ service cloud.firestore {
     // Rules for /chats collection
     match /chats/{chatId} {
       allow get: if isChatOwner(chatId);
-      allow list: if isSignedIn(); // Query will be filtered by userId in the app
+      // list is handled on the collection group
       allow create: if isSignedIn() && hasValidChatData_onCreate(request.auth.uid);
       allow update: if hasValidChatData_onUpdate(chatId); // e.g., for changing title or memory
       allow delete: if isChatOwner(chatId);
@@ -93,6 +93,11 @@ service cloud.firestore {
         allow create: if isSignedIn() && request.resource.data.chatId == chatId;
         allow update, delete: if false; // Messages are immutable
       }
+    }
+    
+    match /chats/{chatId} {
+        // Allow a user to list only their own chats.
+        allow list: if isSignedIn() && request.query.where.userId == request.auth.uid;
     }
 
     /**
