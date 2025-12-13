@@ -17,8 +17,8 @@ interface ChatContextType {
   createNewChat: () => void;
   saveNewChat: (chatId: string, title: string, messages: ChatMessage[]) => void;
   togglePinChat: (chatId: string) => void;
-  renameChat: (chatId: string, newTitle: string) => Promise<void>;
-  deleteChat: (chatId: string) => Promise<void>;
+  renameChat: (chatId: string, newTitle: string) => void;
+  deleteChat: (chatId: string) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -37,15 +37,14 @@ async function getHeaders() {
     return { 'Content-Type': 'application/json' };
 }
 
-function sortChats(a: ChatIndexItem, b: ChatIndexItem): number {
-    if (a.pinned && !b.pinned) return -1;
-    if (!a.pinned && b.pinned) return 1;
-    // For items with the same pinned status, sort by updatedAt
-    const dateA = a.updatedAt || 0;
-    const dateB = b.updatedAt || 0;
-    return dateB - dateA;
+// Stable comparator: pinned first, then most recently updated.
+function chatSortComparator(a: ChatIndexItem, b: ChatIndexItem): number {
+  if (a.pinned && !b.pinned) return -1;
+  if (!a.pinned && b.pinned) return 1;
+  const dateA = typeof a.updatedAt === 'number' ? a.updatedAt : (a.updatedAt as any)?.toMillis?.() ?? 0;
+  const dateB = typeof b.updatedAt === 'number' ? b.updatedAt : (b.updatedAt as any)?.toMillis?.() ?? 0;
+  return dateB - dateA;
 }
-
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const { user } = useUser();
@@ -67,8 +66,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // Effect to load chats from Firestore or localStorage
   useEffect(() => {
     if (user && firestoreChats) {
-      const transformedChats = firestoreChats.map(c => ({...c, updatedAt: (c.updatedAt as unknown as Timestamp)?.toMillis() || Date.now() }));
-      setChats(transformedChats); 
+      const formattedChats = firestoreChats.map(c => ({
+        ...c,
+        // Ensure updatedAt is a number for consistent sorting
+        updatedAt: (c.updatedAt as any)?.seconds ? (c.updatedAt as any).seconds * 1000 : c.updatedAt
+      }))
+      setChats(formattedChats);
     } else if (!user) {
       const storedChats = localStorage.getItem('guestChatsIndex');
       if (storedChats) {
@@ -82,7 +85,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   
   const sortedChats = React.useMemo(() => {
     // Create a new sorted array from the chats state
-    return [...chats].sort(sortChats);
+    return [...chats].sort(chatSortComparator);
   }, [chats]);
   
   // Effect to load messages when activeChatId changes
@@ -182,8 +185,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
               await setDoc(chatRef, {
                   userId: user.uid,
                   title: title,
-                  createdAt: Timestamp.fromMillis(now),
-                  updatedAt: Timestamp.fromMillis(now),
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
                   pinned: false,
               });
 
@@ -214,94 +217,95 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, [user, firestore, chats]);
 
   const togglePinChat = useCallback(async (chatId: string) => {
-    setChats(prevChats => {
-      const chatToUpdate = prevChats.find(c => c.id === chatId);
-      if (!chatToUpdate) return prevChats;
-
-      const newPinnedState = !chatToUpdate.pinned;
-      const updatedChats = prevChats.map(c => 
-          c.id === chatId ? { ...c, pinned: newPinnedState, updatedAt: Date.now() } : c
-      );
-
-      if (user && firestore) {
-          const chatRef = doc(firestore, 'chats', chatId);
-          updateDoc(chatRef, { pinned: newPinnedState, updatedAt: serverTimestamp() }).catch(console.error);
-      } else {
-          localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
-      }
-      
-      return updatedChats;
+    // Optimistic update first
+    let nextPinned: boolean | null = null;
+    setChats(prev => {
+      const target = prev.find(c => c.id === chatId);
+      if (!target) return prev;
+      nextPinned = !target.pinned;
+      const now = Date.now();
+      const updated = prev.map(c => c.id === chatId ? { ...c, pinned: nextPinned!, updatedAt: now } : c);
+      return updated;
     });
+
+    try {
+      if (user && firestore && nextPinned !== null) {
+        const chatRef = doc(firestore, 'chats', chatId);
+        await updateDoc(chatRef, { pinned: nextPinned, updatedAt: serverTimestamp() });
+      } else if (!user) {
+        // Persist guest index
+        const stored = localStorage.getItem('guestChatsIndex');
+        const parsed: ChatIndexItem[] = stored ? JSON.parse(stored) : [];
+        const now = Date.now();
+        const updated = parsed.map(c => c.id === chatId ? { ...c, pinned: !c.pinned, updatedAt: now } : c);
+        localStorage.setItem('guestChatsIndex', JSON.stringify(updated));
+      }
+    } catch (err) {
+      console.error('togglePinChat failed', err);
+    }
   }, [user, firestore]);
 
   const renameChat = useCallback(async (chatId: string, newTitle: string) => {
     // Optimistic UI update
-    setChats(prevChats => {
-        const updatedChats = prevChats.map(c => 
-          c.id === chatId ? { ...c, title: newTitle, updatedAt: Date.now() } : c
-        );
+    const now = Date.now();
+    setChats(prev => prev.map(c => c.id === chatId ? { ...c, title: newTitle, updatedAt: now } : c));
 
-        // Persist changes in the background
-        if (user && firestore) {
-            const chatRef = doc(firestore, 'chats', chatId);
-            updateDoc(chatRef, { title: newTitle, updatedAt: serverTimestamp() }).catch(error => {
-                console.error('Failed to rename chat:', error);
-                // Optionally revert state or show toast
-            });
-        } else {
-            localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
+    try {
+      if (user && firestore) {
+        const chatRef = doc(firestore, 'chats', chatId);
+        await updateDoc(chatRef, { title: newTitle, updatedAt: serverTimestamp() });
+      } else {
+        const storedChats = localStorage.getItem('guestChatsIndex');
+        if (storedChats) {
+          const parsedChats: ChatIndexItem[] = JSON.parse(storedChats);
+          const updatedChats = parsedChats.map(c =>
+            c.id === chatId ? { ...c, title: newTitle, updatedAt: Date.now() } : c
+          );
+          localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
         }
-
-        return updatedChats;
-    });
+      }
+    } catch (error) {
+      console.error('renameChat failed:', error);
+    }
   }, [user, firestore]);
 
 
   const deleteChat = useCallback(async (chatId: string) => {
-    // Optimistically update the state
-    setChats(prevChats => {
-        const currentIndex = prevChats.findIndex(c => c.id === chatId);
-        if (currentIndex === -1) return prevChats; // Should not happen
+    // Compute next active chat deterministically outside setState.
+    const currentChats = chats;
+    const currentIndex = currentChats.findIndex(c => c.id === chatId);
+    const remainingChats = currentChats.filter(c => c.id !== chatId);
 
-        const remainingChats = prevChats.filter(c => c.id !== chatId);
-        
-        let nextActiveChatId: string | null = null;
-        if (activeChatId === chatId) {
-            if (remainingChats.length > 0) {
-                // Select next chat, or previous if deleting the last one
-                const nextIndex = currentIndex < remainingChats.length ? currentIndex : remainingChats.length - 1;
-                nextActiveChatId = remainingChats[nextIndex]?.id || null;
-            }
-        }
-        
-        // Switch to the next chat if the active one was deleted.
-        if (activeChatId === chatId) {
-            if (nextActiveChatId) {
-                setActiveChatId(nextActiveChatId);
-            } else {
-                // No chats left, create a new draft.
-                createNewChat();
-            }
-        }
+    // Optimistically update UI
+    setChats(remainingChats);
 
-        // Persist deletion in the background.
-        try {
-            if (user && firestore) {
-                const chatRef = doc(firestore, 'chats', chatId);
-                deleteDoc(chatRef).catch(error => {
-                   console.error('Error deleting chat from Firestore:', error);
-                });
-            } else {
-                localStorage.removeItem(`guestChat:${chatId}`);
-                localStorage.setItem('guestChatsIndex', JSON.stringify(remainingChats));
-            }
-        } catch (error) {
-           console.error('Error initiating chat deletion:', error);
-        }
+    // Update active chat (avoid doing this inside setChats updater)
+    if (activeChatId === chatId) {
+      let nextActiveChatId: string | null = null;
+      if (remainingChats.length > 0) {
+        const nextIndex = currentIndex < remainingChats.length ? currentIndex : remainingChats.length - 1;
+        nextActiveChatId = remainingChats[nextIndex]?.id || null;
+      }
+      if (nextActiveChatId) {
+        setActiveChatId(nextActiveChatId);
+      } else {
+        createNewChat();
+      }
+    }
 
-        return remainingChats;
-    });
-  }, [user, firestore, activeChatId, createNewChat]);
+    // Persist
+    try {
+      if (user && firestore) {
+        const chatRef = doc(firestore, 'chats', chatId);
+        await deleteDoc(chatRef);
+      } else {
+        localStorage.removeItem(`guestChat:${chatId}`);
+        localStorage.setItem('guestChatsIndex', JSON.stringify(remainingChats));
+      }
+    } catch (error) {
+      console.error('deleteChat failed:', error);
+    }
+  }, [user, firestore, activeChatId, createNewChat, setActiveChatId, chats]);
 
 
   const value = {

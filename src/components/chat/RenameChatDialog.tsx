@@ -1,14 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogClose,
-} from '@/components/ui/dialog';
+import { useEffect, useState } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -35,41 +28,40 @@ export default function RenameChatDialog({ chat, isOpen, onClose, onSave }: Rena
   }, [chat]);
 
   const handleSave = async () => {
-    const trimmedName = name.trim();
-    if (trimmedName.length < 1 || trimmedName.length > 60) {
+    const trimmed = name.trim();
+    if (trimmed.length < 1 || trimmed.length > 60) {
       setError('Title must be between 1 and 60 characters.');
       return;
     }
-    
+
     setIsSaving(true);
     try {
-      await onSave(trimmedName);
+      await onSave(trimmed);
       onClose();
     } catch (e) {
-      setError("Failed to save the new title. Please try again.");
       console.error(e);
+      setError('Failed to save the new title. Please try again.');
     } finally {
       setIsSaving(false);
     }
   };
-  
-  const handleDialogStateChange = (open: boolean) => {
-    if (!open || !isSaving) {
-      onClose();
-    }
-  }
+
+  const handleOpenChange = (open: boolean) => {
+    // Prevent closing while saving
+    if (!open && isSaving) return;
+    if (!open) onClose();
+  };
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleDialogStateChange}>
-      <DialogContent>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Rename Chat</DialogTitle>
         </DialogHeader>
+
         <div className="grid gap-4 py-4">
           <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="name" className="text-right">
-              Title
-            </Label>
+            <Label htmlFor="name" className="text-right">Title</Label>
             <Input
               id="name"
               value={name}
@@ -80,6 +72,7 @@ export default function RenameChatDialog({ chat, isOpen, onClose, onSave }: Rena
           </div>
           {error && <p className="col-start-2 col-span-3 text-sm text-destructive">{error}</p>}
         </div>
+
         <DialogFooter>
           <DialogClose asChild>
             <Button type="button" variant="secondary" disabled={isSaving}>
