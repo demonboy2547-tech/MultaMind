@@ -254,37 +254,32 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, [chats, user, firestore]);
 
   const deleteChat = useCallback(async (chatId: string) => {
-    const updatedChats = chats.filter(c => c.id !== chatId);
+    const remainingChats = sortedChats.filter(c => c.id !== chatId);
     
     if (user && firestore) {
         try {
-            // It's more complex to delete a collection in the client.
-            // For now, we just delete the parent doc. Subcollection remains.
-            // A proper implementation uses a Cloud Function to delete subcollections.
             const chatRef = doc(firestore, 'chats', chatId);
             await deleteDoc(chatRef);
         } catch (error) {
             console.error("Error deleting chat from Firestore:", error);
-            // Optionally, revert UI state if firestore deletion fails
-            return;
+            // Revert UI state if firestore deletion fails, by not setting chats.
+            return; 
         }
     } else {
-        // Guest user: remove from localStorage
         localStorage.removeItem(`guestChat:${chatId}`);
-        localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
+        localStorage.setItem('guestChatsIndex', JSON.stringify(remainingChats));
     }
 
-    setChats(updatedChats);
+    setChats(remainingChats);
 
-    // If the active chat was the one deleted, update the active chat ID
     if (activeChatId === chatId) {
-        if (updatedChats.length > 0) {
-            setActiveChatId(updatedChats[0].id);
+        if (remainingChats.length > 0) {
+            setActiveChatId(remainingChats[0].id);
         } else {
-            createNewChat(); // Or set to null and show an empty state
+            createNewChat();
         }
     }
-  }, [chats, user, firestore, activeChatId, createNewChat]);
+  }, [sortedChats, user, firestore, activeChatId, createNewChat]);
 
 
   const value = {
