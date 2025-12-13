@@ -37,19 +37,23 @@ function ChatHistory() {
     e.stopPropagation();
   };
   
-  const handlePinToggle = (chatId: string) => {
+  const handlePinToggle = (e: MouseEvent, chatId: string) => {
+    e.stopPropagation();
     togglePinChat(chatId);
   };
 
-  const handleRename = (chat: ChatIndexItem) => {
+  const handleRename = (e: MouseEvent, chat: ChatIndexItem) => {
+    e.stopPropagation();
     setRenamingChat(chat);
   };
   
-  const handleDelete = (chat: ChatIndexItem) => {
+  const handleDelete = (e: MouseEvent, chat: ChatIndexItem) => {
+    e.stopPropagation();
     setDeletingChat(chat);
   };
 
-  const handleShare = (chat: ChatIndexItem) => {
+  const handleShare = (e: MouseEvent, chat: ChatIndexItem) => {
+    e.stopPropagation();
     const link = `${window.location.origin}?chat=${chat.id}`;
     navigator.clipboard.writeText(link).then(() => {
       toast({
@@ -89,20 +93,20 @@ function ChatHistory() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="right" align="start" onClick={handleMenuClick}>
-                <DropdownMenuItem className="gap-2" onClick={() => handlePinToggle(chat.id)}>
+                <DropdownMenuItem className="gap-2" onClick={(e) => handlePinToggle(e, chat.id)}>
                   <Pin className="size-4" />
                   <span>{chat.pinned ? 'Unpin' : 'Pin'}</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem className="gap-2" onClick={() => handleShare(chat)}>
+                <DropdownMenuItem className="gap-2" onClick={(e) => handleShare(e, chat)}>
                   <Share2 className="size-4" />
                   <span>Share</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem className="gap-2" onClick={() => handleRename(chat)}>
+                <DropdownMenuItem className="gap-2" onClick={(e) => handleRename(e, chat)}>
                   <Pencil className="size-4" />
                   <span>Rename</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive" onClick={() => handleDelete(chat)}>
+                <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive" onClick={(e) => handleDelete(e, chat)}>
                   <Trash2 className="size-4" />
                   <span>Delete</span>
                 </DropdownMenuItem>
