@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { useAuth } from '@/firebase';
+import { useState, useEffect } from 'react';
+import { useAuth, useUser } from '@/firebase';
+import { useRouter } from 'next/navigation';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -13,17 +14,28 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
+import { Loader2 } from 'lucide-react';
 
 export default function LoginPage() {
   const auth = useAuth();
+  const { user, isUserLoading } = useUser();
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // If the user is loaded and exists, redirect to home.
+    if (!isUserLoading && user) {
+      router.push('/');
+    }
+  }, [user, isUserLoading, router]);
 
   const handleEmailSignUp = async () => {
     setError(null);
     try {
       await createUserWithEmailAndPassword(auth, email, password);
+      // Redirect will be handled by the useEffect hook
     } catch (e: any) {
       setError(e.message);
     }
@@ -33,6 +45,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await signInWithEmailAndPassword(auth, email, password);
+      // Redirect will be handled by the useEffect hook
     } catch (e: any) {
       setError(e.message);
     }
@@ -43,10 +56,26 @@ export default function LoginPage() {
     const provider = new GoogleAuthProvider();
     try {
       await signInWithPopup(auth, provider);
+      // Redirect will be handled by the useEffect hook
     } catch (e: any) {
       setError(e.message);
     }
   };
+
+  // If auth state is still loading, show a loader to prevent flicker
+  if (isUserLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+
+  // If user is already logged in (e.g. they navigated back), this will be caught by useEffect,
+  // but we can prevent rendering the form at all.
+  if (user) {
+    return null;
+  }
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-background">
