@@ -235,44 +235,53 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, [user, firestore]);
 
   const renameChat = useCallback(async (chatId: string, newTitle: string) => {
-    setChats(prevChats => {
-      const updatedChats = prevChats.map(c =>
-        c.id === chatId ? { ...c, title: newTitle, updatedAt: Date.now() } : c
-      );
+    // Optimistic UI update
+    setChats(prevChats => prevChats.map(c => 
+      c.id === chatId ? { ...c, title: newTitle, updatedAt: Date.now() } : c
+    ));
 
-      if (user && firestore) {
-        const chatRef = doc(firestore, 'chats', chatId);
-        updateDoc(chatRef, { title: newTitle, updatedAt: serverTimestamp() }).catch(console.error);
-      } else {
+    // Persist changes
+    if (user && firestore) {
+      const chatRef = doc(firestore, 'chats', chatId);
+      updateDoc(chatRef, { title: newTitle, updatedAt: serverTimestamp() }).catch(console.error);
+    } else {
+      const storedChats = localStorage.getItem('guestChatsIndex');
+      if (storedChats) {
+        const parsedChats: ChatIndexItem[] = JSON.parse(storedChats);
+        const updatedChats = parsedChats.map(c =>
+          c.id === chatId ? { ...c, title: newTitle, updatedAt: Date.now() } : c
+        );
         localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
       }
-      
-      return updatedChats;
-    });
+    }
   }, [user, firestore]);
 
   const deleteChat = useCallback(async (chatId: string) => {
     // Optimistically update the UI by filtering based on the current state
-    let nextActiveChatId: string | null = null;
-
     setChats(prevChats => {
+      const currentIndex = prevChats.findIndex(c => c.id === chatId);
       const remainingChats = prevChats.filter(c => c.id !== chatId);
-
-      // Determine the next active chat ID
+      
       if (activeChatId === chatId) {
+        let nextActiveChatId: string | null = null;
         if (remainingChats.length > 0) {
-          // The sortedChats memo will update, but we can calculate it here for immediate use.
-          const newSortedChats = [...remainingChats].sort(sortChats);
-          nextActiveChatId = newSortedChats[0]?.id || null;
+          // Try to select the next chat, or the previous one if it was the last
+          const nextIndex = currentIndex < remainingChats.length ? currentIndex : remainingChats.length - 1;
+          nextActiveChatId = remainingChats[nextIndex]?.id || null;
+        }
+        
+        if (nextActiveChatId) {
+          setActiveChatId(nextActiveChatId);
         } else {
-          nextActiveChatId = 'new'; // Signal to create a new chat
+          // If no chats are left, create a new draft
+          createNewChat();
         }
       }
       
-      // Persist the changes
+      // Persist the changes in the background
       if (user && firestore) {
         const chatRef = doc(firestore, 'chats', chatId);
-        deleteDoc(chatRef).catch(console.error);
+        deleteDoc(chatRef).catch(console.error); // Handle potential errors
       } else {
         localStorage.removeItem(`guestChat:${chatId}`);
         localStorage.setItem('guestChatsIndex', JSON.stringify(remainingChats));
@@ -280,13 +289,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
       return remainingChats;
     });
-    
-    // Update active chat ID outside the `setChats` updater
-    if (nextActiveChatId === 'new') {
-      createNewChat();
-    } else if (nextActiveChatId) {
-      setActiveChatId(nextActiveChatId);
-    }
 
   }, [user, firestore, activeChatId, createNewChat]);
 
