@@ -23,6 +23,7 @@ function ChatHistory() {
   const [searchTerm, setSearchTerm] = useState('');
   const [renamingChat, setRenamingChat] = useState<ChatIndexItem | null>(null);
   const [deletingChat, setDeletingChat] = useState<ChatIndexItem | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const filteredChats = useMemo(() => {
@@ -44,11 +45,13 @@ function ChatHistory() {
 
   const handleRename = (e: MouseEvent, chat: ChatIndexItem) => {
     e.stopPropagation();
+    setOpenMenuId(null); // Close menu before opening dialog
     setRenamingChat(chat);
   };
   
   const handleDelete = (e: MouseEvent, chat: ChatIndexItem) => {
     e.stopPropagation();
+    setOpenMenuId(null); // Close menu before opening dialog
     setDeletingChat(chat);
   };
 
@@ -89,7 +92,7 @@ function ChatHistory() {
               {chat.pinned && <Pin className="size-3 shrink-0" />}
               <span className="truncate flex-1 text-left ml-2">{chat.title}</span>
             </SidebarMenuButton>
-            <DropdownMenu>
+            <DropdownMenu open={openMenuId === chat.id} onOpenChange={(isOpen) => setOpenMenuId(isOpen ? chat.id : null)}>
               <DropdownMenuTrigger asChild>
                 <Button 
                   variant="ghost" 
