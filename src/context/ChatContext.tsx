@@ -23,20 +23,6 @@ interface ChatContextType {
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
-async function getHeaders() {
-    const authModule = await import('firebase/auth');
-    const auth = authModule.getAuth();
-    const user = auth.currentUser;
-    if (user) {
-      const token = await user.getIdToken();
-      return {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      };
-    }
-    return { 'Content-Type': 'application/json' };
-}
-
 // Stable comparator: pinned first, then most recently updated.
 function chatSortComparator(a: ChatIndexItem, b: ChatIndexItem): number {
   if (a.pinned && !b.pinned) return -1;
@@ -56,11 +42,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   // Firestore query for authenticated user's chats
   const chatsQuery = useMemoFirebase(() => {
+    // CRITICAL: Only create the query if the user is logged in and their UID is available.
     if (!user || !firestore) return null;
-    // We order by updatedAt on the server, and then apply combined sorting on the client
-    return query(collection(firestore, 'chats'), where('userId', '==', user.uid), orderBy('updatedAt', 'desc'));
+    return query(collection(firestore, 'users', user.uid, 'chats'), orderBy('updatedAt', 'desc'));
   }, [user, firestore]);
 
+  // useCollection will now correctly wait for the chatsQuery to be non-null.
   const { data: firestoreChats, isLoading: isChatsLoading } = useCollection<ChatIndexItem>(chatsQuery);
   
   // Effect to load chats from Firestore or localStorage
@@ -68,23 +55,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     if (user && firestoreChats) {
       const formattedChats = firestoreChats.map(c => ({
         ...c,
-        // Ensure updatedAt is a number for consistent sorting
         updatedAt: (c.updatedAt as any)?.seconds ? (c.updatedAt as any).seconds * 1000 : c.updatedAt
-      }))
+      }));
       setChats(formattedChats);
     } else if (!user) {
+      // When user logs out, clear firestore chats and load from local storage
       const storedChats = localStorage.getItem('guestChatsIndex');
-      if (storedChats) {
-        const parsedChats: ChatIndexItem[] = JSON.parse(storedChats);
-        setChats(parsedChats);
-      } else {
-        setChats([]);
-      }
+      setChats(storedChats ? JSON.parse(storedChats) : []);
     }
   }, [user, firestoreChats]);
   
   const sortedChats = React.useMemo(() => {
-    // Create a new sorted array from the chats state
     return [...chats].sort(chatSortComparator);
   }, [chats]);
   
@@ -98,29 +79,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
       setMessagesLoading(true);
       if (user) {
-        // Allow loading messages for draft chats that are not yet in the main list
         const isDraft = !chats.some(chat => chat.id === activeChatId);
         if (isDraft) {
             setMessages([]);
             setMessagesLoading(false);
             return;
         }
-
         try {
-            const headers = await getHeaders();
-            const response = await fetch(`/api/chats/${activeChatId}/messages`, { headers });
-            if (response.ok) {
-              let loadedMessages = await response.json();
-              // Convert Firestore Timestamps to JS Dates/numbers if necessary
-              loadedMessages = loadedMessages.map((msg: any) => ({
-                ...msg,
-                createdAt: msg.createdAt?._seconds ? msg.createdAt._seconds * 1000 : new Date(msg.createdAt)
-              }));
-              setMessages(loadedMessages);
-            } else {
-              console.error("Failed to fetch messages:", response.statusText);
-              setMessages([]);
-            }
+            // No API routes needed anymore for this, direct client SDK access
+            const messagesRef = collection(firestore, 'users', user.uid, 'chats', activeChatId, 'messages');
+            const messagesQuery = query(messagesRef, orderBy('createdAt', 'asc'));
+            const snapshot = await getDocs(messagesQuery);
+            let loadedMessages = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as ChatMessage[];
+            setMessages(loadedMessages);
         } catch (error) {
             console.error("Failed to fetch messages:", error);
             setMessages([]);
@@ -132,43 +103,44 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setMessagesLoading(false);
     };
     loadMessages();
-  }, [activeChatId, user, chats]);
+  }, [activeChatId, user, firestore, chats]);
   
-  // Effect to set initial active chat, or create a draft if none exists
+  const createNewChat = useCallback(() => {
+    const newChatId = user && firestore ? doc(collection(firestore, 'users', user.uid, 'chats')).id : `guest-${Date.now()}`;
+    setActiveChatIdState(newChatId);
+    setMessages([]);
+  }, [user, firestore]);
+  
   useEffect(() => {
-      if (isChatsLoading) return; // Wait until chats are loaded
-      
-      // If there's an active chat already, don't change it.
+      if (isChatsLoading) return;
       if (activeChatId) return;
 
       if (sortedChats.length > 0) {
           setActiveChatIdState(sortedChats[0].id);
       } else {
-          // Creates an initial draft chat on first load if no chats exist
           createNewChat();
       }
-  }, [sortedChats, activeChatId, isChatsLoading]);
+  }, [sortedChats, activeChatId, isChatsLoading, createNewChat]);
 
 
   const setActiveChatId = (id: string | null) => {
-    setMessages([]); // Clear messages immediately on chat switch
+    setMessages([]);
     setActiveChatIdState(id);
   };
 
-  const createNewChat = useCallback(() => {
-    // This creates a temporary ID. The chat isn't saved until the first message.
-    const newChatId = user ? doc(collection(firestore!, 'chats')).id : `guest-${Date.now()}`;
-    setActiveChatId(newChatId); // Set as active, which makes it a "draft"
-    setMessages([]); // Ensure message area is clear for the new draft
-  }, [user, firestore]);
-
   const saveNewChat = useCallback(async (chatId: string, title: string, updatedMessages: ChatMessage[]) => {
-      // If chat already exists in our state, it's not a "new" chat, so we just update messages.
       if (chats.some(chat => chat.id === chatId)) {
         if (user) {
-          // This part is tricky because we'd need to fetch existing messages and append.
-          // For now, this function is primarily for the FIRST save.
-          // A separate `saveMessages` function would be better for subsequent updates.
+            // For existing chats, we only need to save the new messages
+            const batch = writeBatch(firestore);
+            const messagesRef = collection(firestore, 'users', user.uid, 'chats', chatId, 'messages');
+            updatedMessages.forEach(message => {
+                if (!messages.some(m => m.id === message.id)) { // Only add new messages
+                     const messageRef = doc(messagesRef); // Auto-generate ID
+                     batch.set(messageRef, { ...message, createdAt: serverTimestamp(), id: messageRef.id });
+                }
+            });
+            await batch.commit();
         } else {
            localStorage.setItem(`guestChat:${chatId}`, JSON.stringify(updatedMessages));
         }
@@ -180,8 +152,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       
       if (user && firestore) {
           try {
-              const chatRef = doc(firestore, "chats", chatId);
-              // Set the main chat document
+              const chatRef = doc(firestore, "users", user.uid, "chats", chatId);
               await setDoc(chatRef, {
                   userId: user.uid,
                   title: title,
@@ -190,50 +161,41 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                   pinned: false,
               });
 
-              // Batch write all messages
               const batch = writeBatch(firestore);
               updatedMessages.forEach(message => {
-                  const messageRef = doc(collection(firestore, 'chats', chatId, 'messages'));
-                  const messageData = {
-                      ...message,
-                      createdAt: Timestamp.fromMillis(now)
-                  };
-                  batch.set(messageRef, messageData);
+                  const messageRef = doc(collection(firestore, 'users', user.uid, 'chats', chatId, 'messages'));
+                  batch.set(messageRef, { ...message, createdAt: Timestamp.fromMillis(Date.now()), id: messageRef.id });
               });
               await batch.commit();
-
-              // The useCollection hook will refetch, but we can optimistically update UI
+              
               setChats(prevChats => [newChatIndexItem, ...prevChats]);
 
           } catch (error) {
               console.error("Error saving new chat to Firestore:", error);
           }
-      } else { // Guest user
+      } else {
           const updatedChats = [newChatIndexItem, ...chats];
           setChats(updatedChats);
           localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
           localStorage.setItem(`guestChat:${chatId}`, JSON.stringify(updatedMessages));
       }
-  }, [user, firestore, chats]);
+  }, [user, firestore, chats, messages]);
 
   const togglePinChat = useCallback(async (chatId: string) => {
-    // Optimistic update first
     let nextPinned: boolean | null = null;
     setChats(prev => {
       const target = prev.find(c => c.id === chatId);
       if (!target) return prev;
       nextPinned = !target.pinned;
       const now = Date.now();
-      const updated = prev.map(c => c.id === chatId ? { ...c, pinned: nextPinned!, updatedAt: now } : c);
-      return updated;
+      return prev.map(c => c.id === chatId ? { ...c, pinned: nextPinned!, updatedAt: now } : c);
     });
 
     try {
       if (user && firestore && nextPinned !== null) {
-        const chatRef = doc(firestore, 'chats', chatId);
+        const chatRef = doc(firestore, 'users', user.uid, 'chats', chatId);
         await updateDoc(chatRef, { pinned: nextPinned, updatedAt: serverTimestamp() });
       } else if (!user) {
-        // Persist guest index
         const stored = localStorage.getItem('guestChatsIndex');
         const parsed: ChatIndexItem[] = stored ? JSON.parse(stored) : [];
         const now = Date.now();
@@ -242,19 +204,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       }
     } catch (err) {
       console.error('togglePinChat failed', err);
+      // NOTE: Here you might want to add logic to revert the optimistic update
     }
   }, [user, firestore]);
 
   const renameChat = useCallback(async (chatId: string, newTitle: string) => {
-    // Optimistic UI update
     const now = Date.now();
     setChats(prev => prev.map(c => c.id === chatId ? { ...c, title: newTitle, updatedAt: now } : c));
 
     try {
       if (user && firestore) {
-        const chatRef = doc(firestore, 'chats', chatId);
+        const chatRef = doc(firestore, 'users', user.uid, 'chats', chatId);
         await updateDoc(chatRef, { title: newTitle, updatedAt: serverTimestamp() });
-      } else {
+      } else if (!user) {
         const storedChats = localStorage.getItem('guestChatsIndex');
         if (storedChats) {
           const parsedChats: ChatIndexItem[] = JSON.parse(storedChats);
@@ -266,46 +228,47 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error('renameChat failed:', error);
+      // NOTE: Add logic to revert optimistic update on failure
     }
   }, [user, firestore]);
 
 
   const deleteChat = useCallback(async (chatId: string) => {
-    // Compute next active chat deterministically outside setState.
-    const currentChats = chats;
-    const currentIndex = currentChats.findIndex(c => c.id === chatId);
-    const remainingChats = currentChats.filter(c => c.id !== chatId);
-
+    const currentIndex = sortedChats.findIndex(c => c.id === chatId);
+    const remainingChats = sortedChats.filter(c => c.id !== chatId);
+    
     // Optimistically update UI
     setChats(remainingChats);
-
-    // Update active chat (avoid doing this inside setChats updater)
+    
     if (activeChatId === chatId) {
-      let nextActiveChatId: string | null = null;
-      if (remainingChats.length > 0) {
-        const nextIndex = currentIndex < remainingChats.length ? currentIndex : remainingChats.length - 1;
-        nextActiveChatId = remainingChats[nextIndex]?.id || null;
-      }
-      if (nextActiveChatId) {
-        setActiveChatId(nextActiveChatId);
-      } else {
-        createNewChat();
-      }
+        let nextActiveId: string | null = null;
+        if (remainingChats.length > 0) {
+            // Try to select the next chat, or the previous one if it was the last
+            nextActiveId = remainingChats[Math.min(currentIndex, remainingChats.length - 1)].id;
+        }
+        
+        if (nextActiveId) {
+            setActiveChatId(nextActiveId);
+        } else {
+            createNewChat(); // Creates a new draft if no chats are left
+        }
     }
 
-    // Persist
     try {
       if (user && firestore) {
-        const chatRef = doc(firestore, 'chats', chatId);
+        // We also need to delete the subcollection of messages. This is best done in a Cloud Function
+        // or a batched delete on the client, but for now, we just delete the chat doc.
+        const chatRef = doc(firestore, 'users', user.uid, 'chats', chatId);
         await deleteDoc(chatRef);
-      } else {
+      } else if (!user) {
         localStorage.removeItem(`guestChat:${chatId}`);
         localStorage.setItem('guestChatsIndex', JSON.stringify(remainingChats));
       }
     } catch (error) {
       console.error('deleteChat failed:', error);
+       // NOTE: Add logic to revert optimistic update on failure
     }
-  }, [user, firestore, activeChatId, createNewChat, setActiveChatId, chats]);
+  }, [user, firestore, activeChatId, createNewChat, setActiveChatId, sortedChats]);
 
 
   const value = {

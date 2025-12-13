@@ -158,14 +158,18 @@
         }
       },
       {
-        "path": "/chats/{chatId}",
+        "path": "/users/{userId}/chats/{chatId}",
         "definition": {
           "entityName": "Chat",
           "schema": {
             "$ref": "#/backend/entities/Chat"
           },
-          "description": "Stores chat session metadata. Accessible only to the owning user.",
+          "description": "Stores chat session metadata for a specific user.",
           "params": [
+            {
+              "name": "userId",
+              "description": "The unique ID of the user."
+            },
             {
               "name": "chatId",
               "description": "The unique ID of the chat session."
@@ -174,14 +178,18 @@
         }
       },
       {
-        "path": "/chats/{chatId}/messages/{messageId}",
+        "path": "/users/{userId}/chats/{chatId}/messages/{messageId}",
         "definition": {
           "entityName": "Message",
           "schema": {
             "$ref": "#/backend/entities/Message"
           },
-          "description": "Stores messages within a chat. Accessible only to the user who owns the parent chat.",
+          "description": "Stores messages within a user's chat. Accessible only to the user who owns the parent chat.",
           "params": [
+            {
+              "name": "userId",
+              "description": "The ID of the user."
+            },
             {
               "name": "chatId",
               "description": "The ID of the parent chat session."
@@ -194,6 +202,6 @@
         }
       }
     ],
-    "reasoning": "The Firestore structure is designed to manage user data, chats, and messages. It prioritizes security by segregating user-owned data. User profiles, sessions, and chats are all keyed by user ID or have ownership fields that can be easily validated by security rules. This path-based ownership and data segregation simplify rules and prevent users from accessing data that does not belong to them."
+    "reasoning": "The Firestore structure is designed to manage user data, chats, and messages. It prioritizes security by nesting user-owned data (like chats) under a user-specific document. This path-based ownership simplifies security rules and ensures a user can only access their own data, preventing them from listing or accessing data belonging to other users."
   }
 }
