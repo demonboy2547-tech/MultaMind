@@ -17,8 +17,8 @@ interface ChatContextType {
   createNewChat: () => void;
   saveNewChat: (chatId: string, title: string, messages: ChatMessage[]) => void;
   togglePinChat: (chatId: string) => void;
-  renameChat: (chatId: string, newTitle: string) => void;
-  deleteChat: (chatId: string) => void;
+  renameChat: (chatId: string, newTitle: string) => Promise<void>;
+  deleteChat: (chatId: string) => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -235,24 +235,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, [user, firestore]);
 
   const renameChat = useCallback(async (chatId: string, newTitle: string) => {
-    console.log(`[renameChat] Handler start for chat: ${chatId}`);
-    
     // Optimistic UI update
-    console.log('[renameChat] Performing optimistic UI state update.');
     setChats(prevChats => prevChats.map(c => 
       c.id === chatId ? { ...c, title: newTitle, updatedAt: Date.now() } : c
     ));
-    console.log('[renameChat] UI state update complete.');
 
-    // Persist changes
+    // Persist changes in the background
     try {
       if (user && firestore) {
-        console.log('[renameChat] Sending request to Firestore.');
         const chatRef = doc(firestore, 'chats', chatId);
         await updateDoc(chatRef, { title: newTitle, updatedAt: serverTimestamp() });
-        console.log('[renameChat] Firestore request successful.');
       } else {
-        console.log('[renameChat] Persisting to localStorage.');
         const storedChats = localStorage.getItem('guestChatsIndex');
         if (storedChats) {
           const parsedChats: ChatIndexItem[] = JSON.parse(storedChats);
@@ -261,68 +254,63 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           );
           localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
         }
-        console.log('[renameChat] localStorage persistence successful.');
       }
     } catch (error) {
-      console.error('[renameChat] Error during persistence:', error);
-      // Optional: Add logic to revert the optimistic update here
+      console.error('Failed to rename chat:', error);
+      // Optional: Here you could add a toast notification and logic to revert the optimistic update.
+      // For now, we just log the error.
     }
   }, [user, firestore]);
 
 
   const deleteChat = useCallback(async (chatId: string) => {
-    console.log(`[deleteChat] Handler start for chat: ${chatId}`);
+    // Determine the next chat to be selected *before* updating the state.
+    const currentIndex = sortedChats.findIndex(c => c.id === chatId);
+    const remainingChats = sortedChats.filter(c => c.id !== chatId);
+    
+    let nextActiveChatId: string | null = null;
+    if (activeChatId === chatId) {
+      if (remainingChats.length > 0) {
+        // If there's a chat after the deleted one, select it. Otherwise, select the one before.
+        const nextIndex = currentIndex < remainingChats.length ? currentIndex : remainingChats.length - 1;
+        nextActiveChatId = remainingChats[nextIndex]?.id || null;
+      }
+    }
 
-    // Optimistically update the UI by filtering based on the current state
-    setChats(prevChats => {
-      console.log('[deleteChat] Performing optimistic UI state update.');
-      const currentIndex = prevChats.findIndex(c => c.id === chatId);
-      const remainingChats = prevChats.filter(c => c.id !== chatId);
-      console.log(`[deleteChat] UI state update complete. ${remainingChats.length} chats remaining.`);
-      
-      if (activeChatId === chatId) {
-        console.log('[deleteChat] Deleted chat was active. Determining next active chat.');
-        let nextActiveChatId: string | null = null;
-        if (remainingChats.length > 0) {
-          // Try to select the next chat, or the previous one if it was the last
-          const nextIndex = currentIndex < remainingChats.length ? currentIndex : remainingChats.length - 1;
-          nextActiveChatId = remainingChats[nextIndex]?.id || null;
-        }
-        
+    // Optimistic UI update
+    setChats(prev => prev.filter(c => c.id !== chatId));
+    
+    // Switch to the next chat if the active one was deleted.
+    if (activeChatId === chatId) {
         if (nextActiveChatId) {
-          console.log(`[deleteChat] Setting next active chat to: ${nextActiveChatId}`);
-          setActiveChatId(nextActiveChatId);
+            setActiveChatId(nextActiveChatId);
         } else {
-          // If no chats are left, create a new draft
-          console.log('[deleteChat] No chats left. Creating a new draft chat.');
-          createNewChat();
+            // No chats left, create a new draft.
+            createNewChat();
         }
-      }
-      
-      // Persist the changes in the background
-      try {
-        if (user && firestore) {
-          console.log('[deleteChat] Sending request to Firestore.');
-          const chatRef = doc(firestore, 'chats', chatId);
-          deleteDoc(chatRef).then(() => {
-            console.log('[deleteChat] Firestore request successful.');
-          }).catch(error => {
-             console.error('[deleteChat] Error during Firestore persistence:', error);
-          });
-        } else {
-          console.log('[deleteChat] Persisting to localStorage.');
-          localStorage.removeItem(`guestChat:${chatId}`);
-          localStorage.setItem('guestChatsIndex', JSON.stringify(remainingChats));
-          console.log('[deleteChat] localStorage persistence successful.');
-        }
-      } catch (error) {
-         console.error('[deleteChat] Error during persistence initiation:', error);
-      }
+    }
 
-      return remainingChats;
-    });
-
-  }, [user, firestore, activeChatId, createNewChat]);
+    // Persist deletion in the background.
+    try {
+      if (user && firestore) {
+        const chatRef = doc(firestore, 'chats', chatId);
+        // We don't await this so the UI is not blocked.
+        deleteDoc(chatRef).catch(error => {
+           console.error('Error deleting chat from Firestore:', error);
+           // Optional: Show toast on failure.
+        });
+      } else {
+        // For guest users, update localStorage.
+        localStorage.removeItem(`guestChat:${chatId}`);
+        const currentChats = JSON.parse(localStorage.getItem('guestChatsIndex') || '[]');
+        const updatedChats = currentChats.filter((c: ChatIndexItem) => c.id !== chatId);
+        localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
+      }
+    } catch (error) {
+       console.error('Error initiating chat deletion:', error);
+       // Optional: Show toast on failure.
+    }
+  }, [user, firestore, activeChatId, createNewChat, sortedChats]);
 
 
   const value = {
