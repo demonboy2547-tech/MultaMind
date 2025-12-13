@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, MouseEvent } from 'react';
 import { SidebarProvider, Sidebar, SidebarTrigger, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import { useUser } from '@/firebase';
+import { useUser, type UserProfile } from '@/firebase';
 import { getAuth, signOut } from 'firebase/auth';
 import { LogIn, LogOut, Plus, Search, MoreVertical, Pin, Share2, Pencil, Trash2 } from 'lucide-react';
 import Link from 'next/link';
@@ -185,9 +185,16 @@ function ChatHistory() {
 }
 
 function HomePageContent() {
-  const { user, isUserLoading } = useUser();
+  const { user, profile, isUserLoading } = useUser();
   const { activeChatId } = useChat();
-  const [plan, setPlan] = useState<'free' | 'pro'>('free');
+  const [plan, setPlan] = useState<'free' | 'pro'>(profile?.plan || 'free');
+
+  useEffect(() => {
+    if (profile?.plan) {
+      setPlan(profile.plan);
+    }
+  }, [profile]);
+
 
   const handleSignOut = async () => {
     const auth = getAuth();
@@ -204,6 +211,11 @@ function HomePageContent() {
     return name[0].toUpperCase();
   }
 
+  const getPlanLabel = (plan: UserProfile['plan']) => {
+    if (plan === 'pro') return 'Pro Plan';
+    return 'Standard Plan';
+  };
+
   return (
     <SidebarProvider>
       <div className="flex h-screen w-full">
@@ -217,7 +229,7 @@ function HomePageContent() {
                 <div className="h-7 w-7 rounded-full bg-muted animate-pulse" />
                 <div className="h-4 w-20 rounded-md bg-muted animate-pulse group-data-[collapsible=icon]:hidden" />
               </div>
-            ) : user ? (
+            ) : user && profile ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="w-full justify-start gap-2 p-2 h-auto">
@@ -227,7 +239,7 @@ function HomePageContent() {
                       </Avatar>
                       <div className="text-left group-data-[collapsible=icon]:hidden">
                         <p className="text-xs font-medium truncate">{user.displayName || 'User'}</p>
-                        <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                        <p className="text-xs text-muted-foreground truncate">{getPlanLabel(profile.plan)}</p>
                       </div>
                   </Button>
                 </DropdownMenuTrigger>
@@ -238,6 +250,15 @@ function HomePageContent() {
                    </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+            ) : user ? (
+               // Fallback for when user exists but profile is still loading
+               <div className="flex items-center gap-2 p-2">
+                 <Avatar className="size-7">
+                    <AvatarImage src={user.photoURL || undefined} alt={user.displayName || 'User'} />
+                    <AvatarFallback>{getInitials(user.displayName)}</AvatarFallback>
+                  </Avatar>
+                 <div className="h-4 w-20 rounded-md bg-muted animate-pulse group-data-[collapsible=icon]:hidden" />
+               </div>
             ) : (
               <Button asChild variant="ghost" className="w-full justify-start gap-2">
                 <Link href="/login">
@@ -273,3 +294,5 @@ export default function Home() {
     </ChatProvider>
   )
 }
+
+    

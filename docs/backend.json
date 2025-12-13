@@ -17,7 +17,7 @@
         },
         "plan": {
           "type": "string",
-          "enum": ["free", "pro"],
+          "enum": ["standard", "pro"],
           "description": "The user's subscription plan."
         },
         "userMemory": {
@@ -205,3 +205,5 @@
     "reasoning": "The Firestore structure is designed to manage user data, chats, and messages. It prioritizes security by nesting user-owned data (like chats) under a user-specific document. This path-based ownership simplifies security rules and ensures a user can only access their own data, preventing them from listing or accessing data belonging to other users."
   }
 }
+
+    
