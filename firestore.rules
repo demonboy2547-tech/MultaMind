@@ -78,10 +78,9 @@ service cloud.firestore {
       allow delete: if isExistingOwner(userId);
     }
     
-    // Rules for /chats collection
+    // Rules for /chats collection - Individual Document Access
     match /chats/{chatId} {
       allow get: if isChatOwner(chatId);
-      // list is handled on the collection group
       allow create: if isSignedIn() && hasValidChatData_onCreate(request.auth.uid);
       allow update: if hasValidChatData_onUpdate(chatId); // e.g., for changing title or memory
       allow delete: if isChatOwner(chatId);
@@ -95,8 +94,10 @@ service cloud.firestore {
       }
     }
     
-    match /chats/{chatId} {
+    // Rules for /chats collection - Collection Query Access
+    match /chats/{chatIdIsWildcard} {
         // Allow a user to list only their own chats.
+        // This rule is essential for collection-level queries.
         allow list: if isSignedIn() && request.query.where.userId == request.auth.uid;
     }
 
