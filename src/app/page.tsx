@@ -12,7 +12,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import ChatLayout from '@/components/chat/ChatLayout';
 import { ChatProvider, useChat } from '@/context/ChatContext';
-<<<<<<< HEAD
 import RenameChatDialog from '@/components/chat/RenameChatDialog';
 import DeleteChatDialog from '@/components/chat/DeleteChatDialog';
 import type { ChatIndexItem } from '@/lib/types';
@@ -25,23 +24,6 @@ function ChatHistory() {
   const [renamingChat, setRenamingChat] = useState<ChatIndexItem | null>(null);
   const [deletingChat, setDeletingChat] = useState<ChatIndexItem | null>(null);
   const { toast } = useToast();
-=======
-import { cn } from '@/lib/utils';
-import { RenameChatDialog } from '@/components/chat/RenameChatDialog';
-import type { ChatIndexItem } from '@/lib/types';
-
-
-function ChatHistory() {
-  const { chats, activeChatId, setActiveChatId, isLoading, createNewChat, togglePinChat, renameChat } = useChat();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [renameTargetChat, setRenameTargetChat] = useState<ChatIndexItem | null>(null);
-
-
-  const handleChatAction = (e: React.MouseEvent, action: () => void) => {
-    e.stopPropagation();
-    action();
-  };
->>>>>>> 1c586645bc776842b3345291ffd084621f4c1cad
 
   const filteredChats = useMemo(() => {
     const list = chats ?? [];
@@ -97,7 +79,6 @@ function ChatHistory() {
 
   const renderChatList = () => {
     return filteredChats?.map((chat) => (
-<<<<<<< HEAD
       <SidebarMenuItem key={chat.id}>
         <div className="flex items-center group">
             <SidebarMenuButton 
@@ -137,43 +118,6 @@ function ChatHistory() {
                 <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive" onClick={(e) => handleDelete(e, chat)}>
                   <Trash2 className="size-4" />
                   <span>Delete</span>
-=======
-      <SidebarMenuItem key={chat.id} className="relative group">
-        <SidebarMenuButton isActive={chat.id === activeChatId} className="h-8 w-full justify-between" onClick={() => setActiveChatId(chat.id)}>
-          <div className="flex items-center gap-2 truncate">
-            {chat.pinned && <Pin className="size-3 shrink-0 text-amber-500" />}
-            <span className="truncate">{chat.title}</span>
-          </div>
-        </SidebarMenuButton>
-        <div className="absolute right-1 top-1/2 -translate-y-1/2">
-           <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button 
-                  variant="ghost" 
-                  size="icon"
-                  className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <MoreVertical className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side="right" align="start">
-                <DropdownMenuItem onClick={(e) => handleChatAction(e, () => togglePinChat(chat.id))}>
-                  <Pin className="size-4 mr-2" />
-                  {chat.pinned ? 'Unpin' : 'Pin'}
-                </DropdownMenuItem>
-                 <DropdownMenuItem onClick={(e) => handleChatAction(e, () => console.log('Share', chat.id))}>
-                  <Share2 className="size-4 mr-2" />
-                  Share
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={(e) => handleChatAction(e, () => setRenameTargetChat(chat))}>
-                  <Pencil className="size-4 mr-2" />
-                  Rename
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={(e) => handleChatAction(e, () => console.log('Delete', chat.id))} className="text-destructive">
-                  <Trash2 className="size-4 mr-2" />
-                  Delete
->>>>>>> 1c586645bc776842b3345291ffd084621f4c1cad
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -218,7 +162,6 @@ function ChatHistory() {
           </div>
         </div>
       </div>
-<<<<<<< HEAD
       {renamingChat && (
         <RenameChatDialog
           chat={renamingChat}
@@ -234,24 +177,7 @@ function ChatHistory() {
             onConfirm={handleDeleteConfirm}
         />
       )}
-    </div>
-=======
-      {renameTargetChat && (
-        <RenameChatDialog
-          chat={renameTargetChat}
-          onOpenChange={(isOpen) => {
-            if (!isOpen) {
-              setRenameTargetChat(null);
-            }
-          }}
-          onSave={(newTitle) => {
-            renameChat(renameTargetChat.id, newTitle);
-            setRenameTargetChat(null);
-          }}
-        />
-      )}
     </>
->>>>>>> 1c586645bc776842b3345291ffd084621f4c1cad
   )
 }
 
