@@ -14,6 +14,7 @@ export interface Chat {
     createdAt: number; // Use number for timestamp
     updatedAt?: number; // Use number for timestamp
     chatMemory?: string;
+    pinned?: boolean;
 }
 
 export interface GuestChat {
@@ -21,6 +22,7 @@ export interface GuestChat {
     title: string;
     updatedAt: number; // Use number for timestamp
     messages: ChatMessage[];
+    pinned?: boolean;
 }
 
 export interface ChatIndexItem {
