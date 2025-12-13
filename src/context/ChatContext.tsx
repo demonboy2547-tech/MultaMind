@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
@@ -107,8 +108,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, [activeChatId, user, firestore, chats]);
   
   const createNewChat = useCallback(() => {
-    // Generate a placeholder ID. If the user is logged in, this ID will be used for the new document.
     const newChatId = user && firestore ? doc(collection(firestore, 'users', user.uid, 'chats')).id : `guest-${Date.now()}`;
+    
+    // For guest users, immediately add a temporary chat to the list to avoid key errors
+    if (!user) {
+        const newGuestChat: ChatIndexItem = {
+            id: newChatId,
+            title: "New Chat",
+            updatedAt: Date.now(),
+            pinned: false
+        };
+        // Use a function for state update to get the latest `chats` state
+        setChats(prevChats => [newGuestChat, ...prevChats]);
+    }
+    
     setActiveChatIdState(newChatId);
     setMessages([]); // Clear messages for the new chat
 }, [user, firestore]);
@@ -181,18 +194,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       } else {
           // Logic for guest users (localStorage)
           const now = Date.now();
-          if (isExistingChat) {
-              const updatedChats = chats.map(c => c.id === chatId ? {...c, updatedAt: now} : c);
-              setChats(updatedChats);
-              localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
-              localStorage.setItem(`guestChat:${chatId}`, JSON.stringify(updatedMessages));
-          } else {
+          const updatedChats = chats.map(c => c.id === chatId ? {...c, title, updatedAt: now} : c);
+          
+          if (!isExistingChat) {
               const newChatIndexItem: ChatIndexItem = { id: chatId, title, updatedAt: now, pinned: false };
-              const updatedChats = [newChatIndexItem, ...chats];
-              setChats(updatedChats);
-              localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
-              localStorage.setItem(`guestChat:${chatId}`, JSON.stringify(updatedMessages));
+              updatedChats.unshift(newChatIndexItem);
           }
+
+          setChats(updatedChats);
+          localStorage.setItem('guestChatsIndex', JSON.stringify(updatedChats));
+          localStorage.setItem(`guestChat:${chatId}`, JSON.stringify(updatedMessages));
       }
   }, [user, firestore, chats, messages]);
 
