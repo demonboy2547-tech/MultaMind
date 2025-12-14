@@ -1,6 +1,3 @@
-
-
-
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
@@ -100,7 +97,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             const messagesRef = collection(firestore, 'users', user.uid, 'chats', activeChatId, 'messages');
             const messagesQuery = query(messagesRef, orderBy('createdAt', 'asc'));
             const snapshot = await getDocs(messagesQuery);
-            let loadedMessages = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as ChatMessage[];
+            let loadedMessages = snapshot.docs.map(doc => {
+              const data = doc.data();
+              return { 
+                ...data, 
+                id: doc.id,
+                createdAt: data.createdAt?.seconds ? data.createdAt.seconds * 1000 : data.createdAt
+              }
+            }) as ChatMessage[];
             setMessages(loadedMessages);
         } catch (error) {
             console.error("Failed to fetch messages:", error);
@@ -117,9 +121,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   
   const createNewChat = useCallback(() => {
     // Use crypto.randomUUID for a more robust unique ID
-    const newChatId = user && firestore 
-      ? doc(collection(firestore, 'users', user.uid, 'chats')).id 
-      : crypto.randomUUID();
+    const newChatId = crypto.randomUUID();
 
     const newChat: ChatIndexItem = {
       id: newChatId,
@@ -136,7 +138,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     
     setActiveChatIdState(newChatId);
     setMessages([]); // Clear messages for the new chat
-}, [user, firestore]);
+}, [user]);
   
   useEffect(() => {
       if (isChatsLoading) return; // Don't do anything while chats are loading
@@ -173,8 +175,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                   const batch = writeBatch(firestore);
                   updatedMessages.forEach(message => {
                       if (!messages.some(m => m.id === message.id)) { // Only add messages not already in state
-                          const messageRef = doc(messagesRef, message.id);
-                          batch.set(messageRef, { ...message, createdAt: serverTimestamp() });
+                          const messageRef = doc(messagesRef);
+                          batch.set(messageRef, { ...message, id: messageRef.id, createdAt: serverTimestamp() });
                       }
                   });
                   await batch.commit();
@@ -182,6 +184,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
               } else {
                   // New chat: create chat document and add all messages
                   await setDoc(chatRef, {
+                      id: chatId,
                       userId: user.uid,
                       title: title,
                       createdAt: serverTimestamp(),
@@ -191,8 +194,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
                   const batch = writeBatch(firestore);
                   updatedMessages.forEach(message => {
-                      const messageRef = doc(messagesRef, message.id);
-                      batch.set(messageRef, { ...message, createdAt: serverTimestamp() });
+                      const messageRef = doc(messagesRef);
+                      batch.set(messageRef, { ...message, id: messageRef.id, createdAt: serverTimestamp() });
                   });
                   await batch.commit();
                   
@@ -353,5 +356,3 @@ export function useChat() {
   }
   return context;
 }
-
-    

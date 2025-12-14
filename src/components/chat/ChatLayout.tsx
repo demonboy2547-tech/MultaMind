@@ -19,6 +19,18 @@ interface ChatLayoutProps {
   plan: 'free' | 'pro';
 }
 
+// Helper to convert Firestore Timestamps to numbers
+const serializeMessages = (messages: ChatMessage[]): ChatMessage[] => {
+  return messages.map(msg => {
+    const newMsg = { ...msg };
+    if (typeof msg.createdAt === 'object' && msg.createdAt && 'seconds' in msg.createdAt) {
+      newMsg.createdAt = (msg.createdAt as any).seconds * 1000;
+    }
+    return newMsg;
+  });
+};
+
+
 export default function ChatLayout({ plan }: ChatLayoutProps) {
   const { 
     activeChatId, 
@@ -47,7 +59,7 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
     const messageText = input.trim();
     if (!messageText || !activeChatId) return;
 
-    const userMessage: ChatMessage = { id: `user-${Date.now()}`, author: 'user', content: messageText };
+    const userMessage: ChatMessage = { id: `user-${Date.now()}`, author: 'user', content: messageText, createdAt: Date.now() };
     
     // Optimistically update the UI with the user's message
     const newMessages = [...messages, userMessage];
@@ -86,22 +98,23 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
       case '/gpt':
         setGptTyping(true);
         const gptResponse = await callGptAgent(rest, plan);
-        const gptMessage = { id: `gpt-${Date.now()}`, author: 'gpt' as const, content: gptResponse };
-        appendAndSave(gptMessage, [...currentMessages, {id: `user-cmd-${Date.now()}`, author: 'user', content: `${command} ${rest}`}]);
+        const gptMessage = { id: `gpt-${Date.now()}`, author: 'gpt' as const, content: gptResponse, createdAt: Date.now() };
+        appendAndSave(gptMessage, [...currentMessages, {id: `user-cmd-${Date.now()}`, author: 'user', content: `${command} ${rest}`, createdAt: Date.now()}]);
         setGptTyping(false);
         break;
       case '/gemini':
         setGeminiTyping(true);
         const geminiResponse = await callGeminiAgent(rest, plan);
-        const geminiMessage = { id: `gemini-${Date.now()}`, author: 'gemini' as const, content: geminiResponse };
-        appendAndSave(geminiMessage, [...currentMessages, {id: `user-cmd-${Date.now()}`, author: 'user', content: `${command} ${rest}`}]);
+        const geminiMessage = { id: `gemini-${Date.now()}`, author: 'gemini' as const, content: geminiResponse, createdAt: Date.now() };
+        appendAndSave(geminiMessage, [...currentMessages, {id: `user-cmd-${Date.now()}`, author: 'user', content: `${command} ${rest}`, createdAt: Date.now()}]);
         setGeminiTyping(false);
         break;
       case '/review':
+        const plainMessages = serializeMessages(messages);
         if (rest.toLowerCase() === 'gemini') {
           setGptTyping(true);
           try {
-            const reviewMessage = await reviewGeminiWithGpt(messages, plan);
+            const reviewMessage = await reviewGeminiWithGpt(plainMessages, plan);
             const gptReviewMessage = { ...reviewMessage, id: `gpt-review-${Date.now()}` };
             appendAndSave(gptReviewMessage, currentMessages);
           } catch (error) {
@@ -112,7 +125,7 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
         } else { // Default to reviewing GPT
           setGeminiTyping(true);
           try {
-            const reviewMessage = await reviewGptWithGemini(messages, plan);
+            const reviewMessage = await reviewGptWithGemini(plainMessages, plan);
             const geminiReviewMessage = { ...reviewMessage, id: `gemini-review-${Date.now()}` };
             appendAndSave(geminiReviewMessage, currentMessages);
           } catch (error) {
@@ -126,11 +139,11 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
         const lastGpt = [...messages].reverse().find(m => m.author === 'gpt');
         const lastGemini = [...messages].reverse().find(m => m.author === 'gemini');
         if (lastGpt && lastGemini) {
-          const typingMessage = { id: `multa-typing-${Date.now()}`, author: 'multa' as const, content: 'Summarizing...', isTyping: true };
+          const typingMessage = { id: `multa-typing-${Date.now()}`, author: 'multa' as const, content: 'Summarizing...', isTyping: true, createdAt: Date.now() };
           setMessages(prev => [...prev, typingMessage]);
           try {
             const result = await summarizeResponses({ gptResponse: lastGpt.content, geminiResponse: lastGemini.content }, plan);
-            const summaryMessage = { id: `summary-${Date.now()}`, author: 'multa' as const, content: `**Summary of last responses:**\n\n${result.summary}` };
+            const summaryMessage = { id: `summary-${Date.now()}`, author: 'multa' as const, content: `**Summary of last responses:**\n\n${result.summary}`, createdAt: Date.now() };
             setMessages(prev => [...prev.filter(m => m.id !== typingMessage.id), summaryMessage]);
              if(activeChatId) {
                 saveNewChat(activeChatId, messages[0].content.substring(0, 40), [...messages, summaryMessage]);
@@ -140,12 +153,12 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
             toast({ variant: "destructive", title: "Error", description: "Failed to summarize." });
           }
         } else {
-          const multaMessage = { id: `multa-${Date.now()}`, author: 'multa' as const, content: "A response from both GPT and Gemini is needed to summarize." };
+          const multaMessage = { id: `multa-${Date.now()}`, author: 'multa' as const, content: "A response from both GPT and Gemini is needed to summarize.", createdAt: Date.now() };
           appendAndSave(multaMessage, currentMessages);
         }
         break;
       default:
-        const unknownCmdMessage = { id: `multa-${Date.now()}`, author: 'multa' as const, content: `Unknown command: ${command}` };
+        const unknownCmdMessage = { id: `multa-${Date.now()}`, author: 'multa' as const, content: `Unknown command: ${command}`, createdAt: Date.now() };
         appendAndSave(unknownCmdMessage, currentMessages);
     }
   };
@@ -164,8 +177,8 @@ export default function ChatLayout({ plan }: ChatLayoutProps) {
     setGptTyping(false);
     setGeminiTyping(false);
 
-    const gptMessage = { id: `gpt-${Date.now()}`, author: 'gpt' as const, content: gptResponse };
-    const geminiMessage = { id: `gemini-${Date.now() + 1}`, author: 'gemini' as const, content: geminiResponse };
+    const gptMessage = { id: `gpt-${Date.now()}`, author: 'gpt' as const, content: gptResponse, createdAt: Date.now() };
+    const geminiMessage = { id: `gemini-${Date.now() + 1}`, author: 'gemini' as const, content: geminiResponse, createdAt: Date.now() };
 
     const finalMessages = [...currentMessages, gptMessage, geminiMessage];
     setMessages(finalMessages);

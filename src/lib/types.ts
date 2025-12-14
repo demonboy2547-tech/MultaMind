@@ -5,6 +5,7 @@ export interface ChatMessage {
   author: Agent;
   content: string;
   isTyping?: boolean;
+  createdAt?: number | { seconds: number; nanoseconds: number }; // Allow both for transition
 }
 
 export interface Chat {
