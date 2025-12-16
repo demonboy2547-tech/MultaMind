@@ -1,3 +1,4 @@
+
 'use server';
 
 import { headers } from 'next/headers';
@@ -19,7 +20,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2024-06-20',
 });
 
-const APP_URL = process.env.APP_URL || 'http://localhost:9002';
+const APP_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:9002';
 
 /**
  * Retrieves a Stripe customer ID for a given Firebase user UID.

@@ -1,0 +1,66 @@
+
+'use server';
+
+import { headers } from 'next/headers';
+import { NextRequest, NextResponse } from 'next/server';
+import * as admin from 'firebase-admin';
+import Stripe from 'stripe';
+
+// Initialize Firebase Admin SDK if not already initialized
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.applicationDefault(),
+  });
+}
+const db = admin.firestore();
+
+// Initialize Stripe
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: '2024-06-20',
+});
+
+const APP_URL = process.env.APP_URL || 'http://localhost:9002';
+
+export async function POST(req: NextRequest) {
+  const headersList = headers();
+  const authorization = headersList.get('Authorization');
+
+  if (!authorization || !authorization.startsWith('Bearer ')) {
+    return NextResponse.json({ error: 'Unauthorized: No token provided' }, { status: 401 });
+  }
+
+  const idToken = authorization.split('Bearer ')[1];
+
+  try {
+    // 1. Verify the Firebase ID token
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const { uid } = decodedToken;
+
+    // 2. Retrieve the user's stripeCustomerId from Firestore
+    const userRef = db.collection('users').doc(uid);
+    const userSnapshot = await userRef.get();
+    const userData = userSnapshot.data();
+
+    const stripeCustomerId = userData?.stripeCustomerId;
+
+    if (!stripeCustomerId) {
+      return NextResponse.json({ error: 'Stripe customer ID not found for user.' }, { status: 400 });
+    }
+
+    // 3. Create a Stripe Billing Portal session
+    const portalSession = await stripe.billingPortal.sessions.create({
+      customer: stripeCustomerId,
+      return_url: `${APP_URL}/settings`, // Redirect back to the settings page
+    });
+
+    // 4. Return the session URL
+    return NextResponse.json({ url: portalSession.url }, { status: 200 });
+
+  } catch (error: any) {
+    console.error('Error creating portal session:', error);
+    if (error.code === 'auth/id-token-expired' || error.code === 'auth/argument-error') {
+        return NextResponse.json({ error: 'Unauthorized: Invalid token' }, { status: 401 });
+    }
+    return NextResponse.json({ error: `Internal Server Error: ${error.message}` }, { status: 500 });
+  }
+}
