@@ -39,14 +39,14 @@
             "type": "boolean",
             "description": "If true, the subscription will be canceled at the end of the current period."
         },
-        "graceUntil": {
+        "stripeCustomerId": {
+            "type": "string",
+            "description": "The user's Stripe Customer ID."
+        },
+        "proUntil": {
             "type": "string",
             "format": "date-time",
-            "description": "A timestamp indicating when access should be revoked if payment isn't received."
-        },
-        "userMemory": {
-            "type": "string",
-            "description": "A long-term summary of user preferences and key information."
+            "description": "Timestamp indicating when the pro plan benefits expire."
         }
       },
       "required": [

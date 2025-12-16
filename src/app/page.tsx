@@ -194,15 +194,10 @@ function HomePageContent() {
   const [isPricingModalOpen, setPricingModalOpen] = useState(false);
   const { toast } = useToast();
   
-  const [plan, setPlan] = useState<'free' | 'pro' | 'standard'>('free');
-
-  useEffect(() => {
-    if (isUserLoading) return;
-    if (!user) {
-        setPlan('free');
-    } else {
-        setPlan(profile?.plan || 'standard');
-    }
+  const plan = useMemo(() => {
+    if (isUserLoading) return 'free'; // Default to free while loading
+    if (!user) return 'free';
+    return profile?.plan || 'standard';
   }, [user, profile, isUserLoading]);
 
   const handleSubscriptionAction = async (priceId?: string) => {
@@ -243,7 +238,7 @@ function HomePageContent() {
         }
 
         if (data.url) {
-            router.push(data.url);
+            window.location.href = data.url;
         } else {
             throw new Error('Could not get redirect URL from server.');
         }
@@ -263,7 +258,7 @@ function HomePageContent() {
 
   const handlePrimaryButtonClick = () => {
     if (user) {
-        if (profile?.plan === 'pro') {
+        if (plan === 'pro') {
             handleSubscriptionAction(); // Manage subscription
         } else {
             setPricingModalOpen(true); // Open modal to upgrade
@@ -287,7 +282,7 @@ function HomePageContent() {
     return name[0].toUpperCase();
   }
 
-  const getPlanLabel = (currentPlan: typeof plan) => {
+  const getPlanLabel = (currentPlan: 'free' | 'standard' | 'pro') => {
     switch (currentPlan) {
       case 'pro': return 'Pro Plan';
       case 'standard': return 'Standard Plan';
@@ -309,7 +304,7 @@ function HomePageContent() {
     let buttonIcon = <LogIn className="size-4" />;
     
     if (user) {
-        if (profile?.plan === 'pro') {
+        if (plan === 'pro') {
             buttonText = 'Manage Subscription';
             buttonIcon = <Sparkles className="size-4" />;
         } else {

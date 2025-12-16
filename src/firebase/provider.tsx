@@ -10,7 +10,7 @@ export interface UserProfile {
   id: string;
   email: string | null;
   plan: 'free' | 'pro' | 'standard';
-  userMemory: string;
+  // userMemory: string;
 }
 
 interface FirebaseProviderProps {
@@ -51,7 +51,7 @@ export const FirebaseContext = createContext<FirebaseContextState | undefined>(u
 
 /**
  * Ensures a user document exists in Firestore.
- * If the document doesn't exist, it's created with a 'standard' plan and empty memory.
+ * If the document doesn't exist, it's created with a 'standard' plan.
  * @param firestore - The Firestore instance.
  * @param user - The authenticated user.
  */
@@ -65,10 +65,8 @@ const ensureUserDocument = async (firestore: Firestore, user: User) => {
         id: user.uid,
         email: user.email,
         plan: 'standard', // Default plan is 'standard'
-        userMemory: '', // Initialize with empty memory
         createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      }, { merge: true });
     }
   } catch (error) {
     console.error("Error ensuring user document:", error);
@@ -100,7 +98,7 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
       return;
     }
 
-    setUserAuthState({ user: null, profile: null, isUserLoading: true, userError: null });
+    setUserAuthState(prevState => ({ ...prevState, isUserLoading: true }));
 
     const unsubscribeAuth = onAuthStateChanged(
       auth,
@@ -111,16 +109,15 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
           const userDocRef = doc(firestore, 'users', firebaseUser.uid);
           const unsubscribeProfile = onSnapshot(userDocRef, (docSnap) => {
             if (docSnap.exists()) {
-              setUserAuthState(prevState => ({
-                ...prevState,
+              setUserAuthState({
                 user: firebaseUser,
                 profile: docSnap.data() as UserProfile,
                 isUserLoading: false,
                 userError: null,
-              }));
+              });
             } else {
               // This case might happen briefly before ensureUserDocument creates the doc
-              setUserAuthState(prevState => ({ ...prevState, user: firebaseUser, isUserLoading: false }));
+              setUserAuthState({ user: firebaseUser, profile: null, isUserLoading: false, userError: null });
             }
           }, (error) => {
              console.error("FirebaseProvider: User profile snapshot error:", error);
@@ -227,5 +224,3 @@ export const useUser = (): UserHookResult => {
   const { user, profile, isUserLoading, userError } = useFirebase(); // Leverages the main hook
   return { user, profile, isUserLoading, userError };
 };
-
-    
