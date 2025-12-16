@@ -201,47 +201,46 @@ function HomePageContent() {
   }, [user, profile, isUserLoading]);
 
   const handleSubscriptionAction = async (priceId?: string) => {
-    setBillingLoading(true);
-
     if (!user) {
       router.push('/login');
       return;
     }
     
-    const idToken = await user.getIdToken();
-
+    setBillingLoading(true);
+    
     try {
-        let apiUrl = '';
-        let bodyPayload: any = {};
+      const idToken = await user.getIdToken();
+      let apiUrl = '';
+      let bodyPayload: any = {};
 
-        if (profile?.plan === 'pro') {
-            apiUrl = '/api/stripe/create-portal-session';
-        } else {
-            apiUrl = '/api/stripe/create-checkout-session';
-            if (!priceId) throw new Error("Price ID is required for upgrading.");
-            bodyPayload = { priceId };
-        }
+      if (profile?.plan === 'pro') {
+          apiUrl = '/api/stripe/create-portal-session';
+      } else {
+          apiUrl = '/api/stripe/create-checkout-session';
+          if (!priceId) throw new Error("Price ID is required for upgrading.");
+          bodyPayload = { priceId };
+      }
 
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${idToken}`,
-            },
-            body: Object.keys(bodyPayload).length > 0 ? JSON.stringify(bodyPayload) : undefined,
-        });
+      const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${idToken}`,
+          },
+          body: Object.keys(bodyPayload).length > 0 ? JSON.stringify(bodyPayload) : undefined,
+      });
 
-        const data = await response.json();
+      const data = await response.json();
 
-        if (!response.ok) {
-            throw new Error(data.error || 'Something went wrong.');
-        }
+      if (!response.ok) {
+          throw new Error(data.error || 'Something went wrong.');
+      }
 
-        if (data.url) {
-            window.location.href = data.url;
-        } else {
-            throw new Error('Could not get redirect URL from server.');
-        }
+      if (data.url) {
+          window.location.href = data.url;
+      } else {
+          throw new Error('Could not get redirect URL from server.');
+      }
 
     } catch (error: any) {
         console.error('Subscription action failed:', error);
@@ -402,6 +401,7 @@ function HomePageContent() {
         onClose={() => setPricingModalOpen(false)}
         onCheckout={handleSubscriptionAction}
         isLoading={isBillingLoading}
+        isLoggedIn={!!user}
       />
     </>
   );
