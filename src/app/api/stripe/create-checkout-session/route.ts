@@ -14,9 +14,13 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
+// Ensure the secret key is defined
+if (!process.env.STRIPE_SECRET_KEY) {
+  throw new Error('STRIPE_SECRET_KEY is not set in environment variables');
+}
+
 // Initialize Stripe
-// It's crucial to use environment variables for secrets
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: '2024-06-20',
 });
 
@@ -31,10 +35,12 @@ const getOrCreateCustomer = async (userId: string, email: string | null) => {
   const userSnapshot = await userRef.get();
   const userData = userSnapshot.data();
 
+  // If customer ID already exists, return it
   if (userData?.stripeCustomerId) {
     return userData.stripeCustomerId;
   }
 
+  // Create a new customer in Stripe
   const customer = await stripe.customers.create({
     email: email ?? undefined,
     metadata: {
@@ -42,7 +48,8 @@ const getOrCreateCustomer = async (userId: string, email: string | null) => {
     },
   });
 
-  await userRef.update({ stripeCustomerId: customer.id });
+  // Save the new customer ID to Firestore
+  await userRef.set({ stripeCustomerId: customer.id }, { merge: true });
   return customer.id;
 };
 
@@ -83,8 +90,8 @@ export async function POST(req: NextRequest) {
         },
       ],
       mode: 'subscription',
-      success_url: `${APP_URL}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${APP_URL}/billing/cancel`,
+      success_url: `${APP_URL}/?session_id={CHECKOUT_SESSION_ID}`, // Redirect to home page on success
+      cancel_url: `${APP_URL}/`, // Redirect to home page on cancel
       // Pass the user's UID to the webhook via metadata
       client_reference_id: uid,
       subscription_data: {

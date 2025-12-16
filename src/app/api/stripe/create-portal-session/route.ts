@@ -14,12 +14,17 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
+// Ensure the secret key is defined
+if (!process.env.STRIPE_SECRET_KEY) {
+  throw new Error('STRIPE_SECRET_KEY is not set in environment variables');
+}
+
 // Initialize Stripe
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: '2024-06-20',
 });
 
-const APP_URL = process.env.APP_URL || 'http://localhost:9002';
+const APP_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:9002';
 
 export async function POST(req: NextRequest) {
   const headersList = headers();
@@ -44,13 +49,14 @@ export async function POST(req: NextRequest) {
     const stripeCustomerId = userData?.stripeCustomerId;
 
     if (!stripeCustomerId) {
-      return NextResponse.json({ error: 'Stripe customer ID not found for user.' }, { status: 400 });
+      console.warn(`User ${uid} tried to access billing portal without a Stripe customer ID.`);
+      return NextResponse.json({ error: 'Stripe customer ID not found for user.' }, { status: 404 });
     }
 
     // 3. Create a Stripe Billing Portal session
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: stripeCustomerId,
-      return_url: `${APP_URL}/settings`, // Redirect back to the settings page
+      return_url: `${APP_URL}/`, // Redirect back to the main app page
     });
 
     // 4. Return the session URL
