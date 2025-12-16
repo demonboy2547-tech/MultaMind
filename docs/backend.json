@@ -4,11 +4,11 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "User",
       "type": "object",
-      "description": "Represents a user of the MultaMind application.",
+      "description": "Represents a user of the MultaMind application, including their subscription details.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the User entity."
+          "description": "Unique identifier for the User entity, matching the Firebase Auth UID."
         },
         "email": {
           "type": "string",
@@ -19,6 +19,30 @@
           "type": "string",
           "enum": ["standard", "pro"],
           "description": "The user's subscription plan."
+        },
+        "planStatus": {
+            "type": "string",
+            "enum": ["active", "canceled", "past_due"],
+            "description": "The current status of the user's subscription."
+        },
+        "billingInterval": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "description": "The billing frequency for the subscription."
+        },
+        "currentPeriodEnd": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp for when the current billing period ends."
+        },
+        "cancelAtPeriodEnd": {
+            "type": "boolean",
+            "description": "If true, the subscription will be canceled at the end of the current period."
+        },
+        "graceUntil": {
+            "type": "string",
+            "format": "date-time",
+            "description": "A timestamp indicating when access should be revoked if payment isn't received."
         },
         "userMemory": {
             "type": "string",
@@ -205,5 +229,3 @@
     "reasoning": "The Firestore structure is designed to manage user data, chats, and messages. It prioritizes security by nesting user-owned data (like chats) under a user-specific document. This path-based ownership simplifies security rules and ensures a user can only access their own data, preventing them from listing or accessing data belonging to other users."
   }
 }
-
-    
