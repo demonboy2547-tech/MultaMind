@@ -69,7 +69,7 @@ const syncSubscriptionToFirestore = async (subscription: Stripe.Subscription) =>
     billingInterval: billingInterval,
     currentPeriodEnd: admin.firestore.Timestamp.fromMillis(subscription.current_period_end * 1000),
     cancelAtPeriodEnd: subscription.cancel_at_period_end,
-    graceUntil: null, // Reset grace period on successful update
+    proUntil: null, // Reset grace period on successful update
   };
 
   functions.logger.log(`Syncing subscription ${subscription.id} for user ${userId}`, dataToUpdate);
@@ -114,11 +114,11 @@ const handlePaymentFailed = async (invoice: Stripe.Invoice) => {
   if (userQuery.empty) return;
 
   const userRef = userQuery.docs[0].ref;
-  const graceUntil = admin.firestore.Timestamp.fromMillis(Date.now() + 48 * 60 * 60 * 1000); // 48 hours from now
+  const proUntil = admin.firestore.Timestamp.fromMillis(Date.now() + 48 * 60 * 60 * 1000); // 48 hours from now
 
   await userRef.update({
     planStatus: 'past_due',
-    graceUntil: graceUntil,
+    proUntil: proUntil,
   });
 };
 
@@ -150,7 +150,7 @@ const handleSubscriptionEnded = async (subscription: Stripe.Subscription) => {
         billingInterval: null,
         currentPeriodEnd: null,
         cancelAtPeriodEnd: false,
-        graceUntil: null,
+        proUntil: null,
     });
 }
 
