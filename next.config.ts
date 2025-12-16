@@ -23,13 +23,18 @@ const nextConfig: NextConfig = {
         pathname: '/**',
       },
       {
-        protocol: 'https',
-        hostname: 'picsum.photos',
-        port: '',
-        pathname: '/**',
-      },
-    ],
+        protocol: 'https'
+      }
+    ]
   },
+  env: {
+    STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+    STRIPE_PRO_PRICE_ID_MONTHLY: process.env.STRIPE_PRO_PRICE_ID_MONTHLY,
+    STRIPE_PRO_PRICE_ID_YEARLY: process.env.STRIPE_PRO_PRICE_ID_YEARLY,
+    APP_URL: process.env.APP_URL,
+    NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+  }
 };
 
 export default nextConfig;

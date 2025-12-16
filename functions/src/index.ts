@@ -42,21 +42,28 @@ const getOrCreateCustomer = async (userId: string, email: string | null) => {
  */
 const syncSubscriptionToFirestore = async (subscription: Stripe.Subscription) => {
   const customerId = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id;
-  const userQuery = await db.collection('users').where('stripeCustomerId', '==', customerId).limit(1).get();
+  
+  // Get user from client_reference_id on the checkout session if available
+  let userId = subscription.metadata.firebaseUID;
 
-  if (userQuery.empty) {
+  if (!userId) {
+      const userQuery = await db.collection('users').where('stripeCustomerId', '==', customerId).limit(1).get();
+      if (!userQuery.empty) {
+          userId = userQuery.docs[0].id;
+      }
+  }
+
+  if (!userId) {
     functions.logger.error('Could not find user for customer ID:', customerId);
     return;
   }
 
-  const userDoc = userQuery.docs[0];
-  const userId = userDoc.id;
   const userRef = db.collection('users').doc(userId);
 
   const plan = subscription.items.data[0].price.recurring?.interval === 'year' ? 'pro' : 'pro'; // Assuming both are "pro"
   const billingInterval = subscription.items.data[0].price.recurring?.interval ?? null;
 
-  const dataToSet = {
+  const dataToUpdate = {
     plan: plan,
     planStatus: subscription.status,
     billingInterval: billingInterval,
@@ -65,14 +72,28 @@ const syncSubscriptionToFirestore = async (subscription: Stripe.Subscription) =>
     graceUntil: null, // Reset grace period on successful update
   };
 
-  functions.logger.log(`Syncing subscription ${subscription.id} for user ${userId}`, dataToSet);
-  await userRef.update(dataToSet);
+  functions.logger.log(`Syncing subscription ${subscription.id} for user ${userId}`, dataToUpdate);
+  await userRef.update(dataToUpdate);
 };
 
 /**
  * Handles the 'checkout.session.completed' event.
  */
 const handleCheckoutCompleted = async (session: Stripe.Checkout.Session) => {
+  const userId = session.client_reference_id;
+  const customerId = session.customer;
+
+  if (!userId) {
+    functions.logger.error('Checkout session completed without a user ID.', { sessionId: session.id });
+    return;
+  }
+
+  // Ensure stripeCustomerId is set, especially for the first subscription
+  if (customerId) {
+      const userRef = db.collection('users').doc(userId);
+      await userRef.update({ stripeCustomerId: customerId });
+  }
+
   if (!session.subscription) {
     functions.logger.error('Checkout session completed without a subscription ID.', { sessionId: session.id });
     return;
@@ -80,6 +101,7 @@ const handleCheckoutCompleted = async (session: Stripe.Checkout.Session) => {
   const subscription = await stripe.subscriptions.retrieve(session.subscription as string);
   await syncSubscriptionToFirestore(subscription);
 };
+
 
 /**
  * Handles the 'invoice.payment_failed' event.
@@ -105,14 +127,21 @@ const handlePaymentFailed = async (invoice: Stripe.Invoice) => {
  */
 const handleSubscriptionEnded = async (subscription: Stripe.Subscription) => {
     const customerId = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id;
-    const userQuery = await db.collection('users').where('stripeCustomerId', '==', customerId).limit(1).get();
+    let userId = subscription.metadata.firebaseUID;
+    
+    if(!userId){
+        const userQuery = await db.collection('users').where('stripeCustomerId', '==', customerId).limit(1).get();
+        if(!userQuery.empty) {
+            userId = userQuery.docs[0].id;
+        }
+    }
 
-    if(userQuery.empty) {
+    if(!userId) {
         functions.logger.error('Cannot find user for customer on subscription end.', { customerId });
         return;
     }
     
-    const userRef = userQuery.docs[0].ref;
+    const userRef = db.collection('users').doc(userId);
 
     // Downgrade user to the "standard" plan
     await userRef.update({
