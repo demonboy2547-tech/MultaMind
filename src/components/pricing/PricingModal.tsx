@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Check, Loader2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { getProPriceIds } from '@/lib/stripe/pricing';
 
 interface PricingModalProps {
   isOpen: boolean;
@@ -16,7 +17,8 @@ interface PricingModalProps {
 }
 
 export default function PricingModal({ isOpen, onClose, onCheckout, isLoading, isLoggedIn }: PricingModalProps) {
-    const selectedPriceId = process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID_MONTHLY;
+    const proPriceIds = getProPriceIds();
+    const selectedPriceId = proPriceIds.monthly;
 
     const handleCheckout = () => {
         if (selectedPriceId && isLoggedIn) {
@@ -25,12 +27,13 @@ export default function PricingModal({ isOpen, onClose, onCheckout, isLoading, i
     };
 
     const isButtonDisabled = isLoading || !isLoggedIn || !selectedPriceId;
-
+    
     const disabledReason = useMemo(() => {
         if (!isLoggedIn) return "You must be logged in to upgrade.";
-        if (!selectedPriceId) return "Stripe pricing is not configured.";
+        if (!selectedPriceId) return "Stripe pricing is not configured. Please contact support.";
         return null;
     }, [isLoggedIn, selectedPriceId]);
+
 
     const handleDialogStateChange = (open: boolean) => {
         if (!open || !isLoading) {

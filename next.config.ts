@@ -30,11 +30,15 @@ const nextConfig: NextConfig = {
     ]
   },
   env: {
+    // Server-side only
     STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+    STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+
+    // Public (client-side)
     NEXT_PUBLIC_STRIPE_PRO_PRICE_ID_MONTHLY: process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID_MONTHLY,
     NEXT_PUBLIC_STRIPE_PRO_PRICE_ID_YEARLY: process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID_YEARLY,
-    NEXT_PUBLIC_SITE_URL: process.env.APP_URL || 'http://localhost:9002',
-    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+    NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:9002',
   }
 };
 
