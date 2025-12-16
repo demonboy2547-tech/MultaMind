@@ -17,6 +17,7 @@ import RenameChatDialog from '@/components/chat/RenameChatDialog';
 import DeleteChatDialog from '@/components/chat/DeleteChatDialog';
 import type { ChatIndexItem } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
+import PricingModal from '@/components/pricing/PricingModal';
 
 
 function ChatHistory() {
@@ -190,6 +191,7 @@ function HomePageContent() {
   const { activeChatId } = useChat();
   const router = useRouter();
   const [isBillingLoading, setBillingLoading] = useState(false);
+  const [isPricingModalOpen, setPricingModalOpen] = useState(false);
   const { toast } = useToast();
   
   const [plan, setPlan] = useState<'free' | 'pro' | 'standard'>('free');
@@ -203,7 +205,7 @@ function HomePageContent() {
     }
   }, [user, profile, isUserLoading]);
 
-  const handleSubscriptionAction = async () => {
+  const handleSubscriptionAction = async (priceId?: string) => {
     setBillingLoading(true);
 
     if (!user) {
@@ -218,12 +220,11 @@ function HomePageContent() {
         let bodyPayload: any = {};
 
         if (profile?.plan === 'pro') {
-            // User wants to manage their existing subscription
             apiUrl = '/api/stripe/create-portal-session';
         } else {
-            // User wants to upgrade to Pro (default to monthly)
             apiUrl = '/api/stripe/create-checkout-session';
-            bodyPayload = { priceId: process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID_MONTHLY };
+            if (!priceId) throw new Error("Price ID is required for upgrading.");
+            bodyPayload = { priceId };
         }
 
         const response = await fetch(apiUrl, {
@@ -241,7 +242,6 @@ function HomePageContent() {
             throw new Error(data.error || 'Something went wrong.');
         }
 
-        // Redirect to Stripe Checkout or Billing Portal
         if (data.url) {
             router.push(data.url);
         } else {
@@ -255,15 +255,27 @@ function HomePageContent() {
             title: "Error",
             description: error.message || "Failed to process subscription request.",
         });
+    } finally {
         setBillingLoading(false);
+        setPricingModalOpen(false);
     }
-    // No need to setBillingLoading(false) on success, as we are navigating away.
+  };
+
+  const handlePrimaryButtonClick = () => {
+    if (user) {
+        if (profile?.plan === 'pro') {
+            handleSubscriptionAction(); // Manage subscription
+        } else {
+            setPricingModalOpen(true); // Open modal to upgrade
+        }
+    } else {
+        router.push('/login'); // Go to login if not authenticated
+    }
   };
 
   const handleSignOut = async () => {
     const auth = getAuth();
     await signOut(auth);
-    // The useUser hook will trigger a re-render and ChatContext will reset to guest state
   };
 
   const getInitials = (name?: string | null) => {
@@ -310,7 +322,7 @@ function HomePageContent() {
         <Button 
             variant="outline" 
             className="w-full justify-center" 
-            onClick={handleSubscriptionAction}
+            onClick={handlePrimaryButtonClick}
             disabled={isBillingLoading}
         >
             {isBillingLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : buttonIcon}
@@ -320,76 +332,83 @@ function HomePageContent() {
   }
 
   return (
-    <SidebarProvider>
-      <div className="flex h-screen w-full">
-        <Sidebar collapsible="offcanvas">
-          <SidebarContent className="p-0 flex flex-col">
-             <ChatHistory />
-          </SidebarContent>
-          <SidebarFooter className="p-2 space-y-2">
-            <div className="group-data-[collapsible=icon]:hidden">
-                {renderSubscriptionButton()}
-            </div>
-
-            {isUserLoading ? (
-              <div className="flex items-center gap-2 p-2">
-                <div className="h-7 w-7 rounded-full bg-muted animate-pulse" />
-                <div className="h-4 w-20 rounded-md bg-muted animate-pulse group-data-[collapsible=icon]:hidden" />
+    <>
+      <SidebarProvider>
+        <div className="flex h-screen w-full">
+          <Sidebar collapsible="offcanvas">
+            <SidebarContent className="p-0 flex flex-col">
+              <ChatHistory />
+            </SidebarContent>
+            <SidebarFooter className="p-2 space-y-2">
+              <div className="group-data-[collapsible=icon]:hidden">
+                  {renderSubscriptionButton()}
               </div>
-            ) : user && profile ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="w-full justify-start gap-2 p-2 h-auto">
-                     <Avatar className="size-7">
-                        <AvatarImage src={user.photoURL || undefined} alt={user.displayName || 'User'} />
-                        <AvatarFallback>{getInitials(user.displayName)}</AvatarFallback>
-                      </Avatar>
-                      <div className="text-left group-data-[collapsible=icon]:hidden">
-                        <p className="text-xs font-medium truncate">{user.displayName || 'User'}</p>
-                        <p className="text-xs text-muted-foreground truncate">{getPlanLabel(plan)}</p>
-                      </div>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent side="right" align="start">
-                   <DropdownMenuItem onClick={handleSignOut} className="gap-2">
-                      <LogOut className="size-4"/>
-                      <span>Sign Out</span>
-                   </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : user ? (
-               // Fallback for when user exists but profile is still loading
-               <div className="flex items-center gap-2 p-2">
-                 <Avatar className="size-7">
-                    <AvatarImage src={user.photoURL || undefined} alt={user.displayName || 'User'} />
-                    <AvatarFallback>{getInitials(user.displayName)}</AvatarFallback>
-                  </Avatar>
-                 <div className="h-4 w-20 rounded-md bg-muted animate-pulse group-data-[collapsible=icon]:hidden" />
-               </div>
-            ) : (
-              <Button asChild variant="ghost" className="w-full justify-start gap-2">
-                <Link href="/login">
-                  <LogIn className="size-4" />
-                  <span className="group-data-[collapsible=icon]:hidden">Log in</span>
-                </Link>
-              </Button>
-            )}
-          </SidebarFooter>
-        </Sidebar>
 
-        <div className="flex flex-col flex-1">
-           <header className="flex h-12 items-center justify-start gap-2 border-b bg-background px-4 md:hidden">
-              <SidebarTrigger />
-              <h1 className="font-semibold">MultaMind</h1>
-            </header>
-          {activeChatId ? <ChatLayout plan={plan} /> : (
-            <div className="flex-1 flex items-center justify-center">
-              <p>Select a chat or start a new one.</p>
-            </div>
-          )}
+              {isUserLoading ? (
+                <div className="flex items-center gap-2 p-2">
+                  <div className="h-7 w-7 rounded-full bg-muted animate-pulse" />
+                  <div className="h-4 w-20 rounded-md bg-muted animate-pulse group-data-[collapsible=icon]:hidden" />
+                </div>
+              ) : user && profile ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" className="w-full justify-start gap-2 p-2 h-auto">
+                      <Avatar className="size-7">
+                          <AvatarImage src={user.photoURL || undefined} alt={user.displayName || 'User'} />
+                          <AvatarFallback>{getInitials(user.displayName)}</AvatarFallback>
+                        </Avatar>
+                        <div className="text-left group-data-[collapsible=icon]:hidden">
+                          <p className="text-xs font-medium truncate">{user.displayName || 'User'}</p>
+                          <p className="text-xs text-muted-foreground truncate">{getPlanLabel(plan)}</p>
+                        </div>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="right" align="start">
+                    <DropdownMenuItem onClick={handleSignOut} className="gap-2">
+                        <LogOut className="size-4"/>
+                        <span>Sign Out</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : user ? (
+                <div className="flex items-center gap-2 p-2">
+                  <Avatar className="size-7">
+                      <AvatarImage src={user.photoURL || undefined} alt={user.displayName || 'User'} />
+                      <AvatarFallback>{getInitials(user.displayName)}</AvatarFallback>
+                    </Avatar>
+                  <div className="h-4 w-20 rounded-md bg-muted animate-pulse group-data-[collapsible=icon]:hidden" />
+                </div>
+              ) : (
+                <Button asChild variant="ghost" className="w-full justify-start gap-2">
+                  <Link href="/login">
+                    <LogIn className="size-4" />
+                    <span className="group-data-[collapsible=icon]:hidden">Log in</span>
+                  </Link>
+                </Button>
+              )}
+            </SidebarFooter>
+          </Sidebar>
+
+          <div className="flex flex-col flex-1">
+            <header className="flex h-12 items-center justify-start gap-2 border-b bg-background px-4 md:hidden">
+                <SidebarTrigger />
+                <h1 className="font-semibold">MultaMind</h1>
+              </header>
+            {activeChatId ? <ChatLayout plan={plan} /> : (
+              <div className="flex-1 flex items-center justify-center">
+                <p>Select a chat or start a new one.</p>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-    </SidebarProvider>
+      </SidebarProvider>
+      <PricingModal 
+        isOpen={isPricingModalOpen}
+        onClose={() => setPricingModalOpen(false)}
+        onCheckout={handleSubscriptionAction}
+        isLoading={isBillingLoading}
+      />
+    </>
   );
 }
 
@@ -401,5 +420,3 @@ export default function Home() {
     </ChatProvider>
   )
 }
-
-    
