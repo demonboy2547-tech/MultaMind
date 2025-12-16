@@ -5,8 +5,9 @@ import { SidebarProvider, Sidebar, SidebarTrigger, SidebarContent, SidebarFooter
 import { Button } from '@/components/ui/button';
 import { useUser, type UserProfile } from '@/firebase';
 import { getAuth, signOut } from 'firebase/auth';
-import { LogIn, LogOut, Plus, Search, MoreVertical, Pin, Share2, Pencil, Trash2 } from 'lucide-react';
+import { LogIn, LogOut, Plus, Search, MoreVertical, Pin, Share2, Pencil, Trash2, Sparkles, Loader2 } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
@@ -187,14 +188,77 @@ function ChatHistory() {
 function HomePageContent() {
   const { user, profile, isUserLoading } = useUser();
   const { activeChatId } = useChat();
-  const [plan, setPlan] = useState<'free' | 'pro'>(profile?.plan || 'free');
+  const router = useRouter();
+  const [isBillingLoading, setBillingLoading] = useState(false);
+  const { toast } = useToast();
+  
+  const [plan, setPlan] = useState<'free' | 'pro' | 'standard'>('free');
 
   useEffect(() => {
-    if (profile?.plan) {
-      setPlan(profile.plan);
+    if (isUserLoading) return;
+    if (!user) {
+        setPlan('free');
+    } else {
+        setPlan(profile?.plan || 'standard');
     }
-  }, [profile]);
+  }, [user, profile, isUserLoading]);
 
+  const handleSubscriptionAction = async () => {
+    setBillingLoading(true);
+
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+    
+    const idToken = await user.getIdToken();
+
+    try {
+        let apiUrl = '';
+        let bodyPayload: any = {};
+
+        if (profile?.plan === 'pro') {
+            // User wants to manage their existing subscription
+            apiUrl = '/api/stripe/create-portal-session';
+        } else {
+            // User wants to upgrade to Pro (default to monthly)
+            apiUrl = '/api/stripe/create-checkout-session';
+            bodyPayload = { priceId: process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID_MONTHLY };
+        }
+
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${idToken}`,
+            },
+            body: Object.keys(bodyPayload).length > 0 ? JSON.stringify(bodyPayload) : undefined,
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Something went wrong.');
+        }
+
+        // Redirect to Stripe Checkout or Billing Portal
+        if (data.url) {
+            router.push(data.url);
+        } else {
+            throw new Error('Could not get redirect URL from server.');
+        }
+
+    } catch (error: any) {
+        console.error('Subscription action failed:', error);
+        toast({
+            variant: "destructive",
+            title: "Error",
+            description: error.message || "Failed to process subscription request.",
+        });
+        setBillingLoading(false);
+    }
+    // No need to setBillingLoading(false) on success, as we are navigating away.
+  };
 
   const handleSignOut = async () => {
     const auth = getAuth();
@@ -211,10 +275,49 @@ function HomePageContent() {
     return name[0].toUpperCase();
   }
 
-  const getPlanLabel = (plan: UserProfile['plan']) => {
-    if (plan === 'pro') return 'Pro Plan';
-    return 'Standard Plan';
+  const getPlanLabel = (currentPlan: typeof plan) => {
+    switch (currentPlan) {
+      case 'pro': return 'Pro Plan';
+      case 'standard': return 'Standard Plan';
+      default: return 'Free Plan';
+    }
   };
+
+  const renderSubscriptionButton = () => {
+    if (isUserLoading) {
+      return (
+        <Button variant="outline" className="w-full justify-center" disabled>
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          Loading plan...
+        </Button>
+      );
+    }
+    
+    let buttonText = "Log in to Upgrade";
+    let buttonIcon = <LogIn className="size-4" />;
+    
+    if (user) {
+        if (profile?.plan === 'pro') {
+            buttonText = 'Manage Subscription';
+            buttonIcon = <Sparkles className="size-4" />;
+        } else {
+            buttonText = 'Upgrade to Pro';
+            buttonIcon = <Sparkles className="size-4" />;
+        }
+    }
+
+    return (
+        <Button 
+            variant="outline" 
+            className="w-full justify-center" 
+            onClick={handleSubscriptionAction}
+            disabled={isBillingLoading}
+        >
+            {isBillingLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : buttonIcon}
+            <span className="group-data-[collapsible=icon]:hidden">{buttonText}</span>
+        </Button>
+    )
+  }
 
   return (
     <SidebarProvider>
@@ -223,7 +326,11 @@ function HomePageContent() {
           <SidebarContent className="p-0 flex flex-col">
              <ChatHistory />
           </SidebarContent>
-          <SidebarFooter className="p-2">
+          <SidebarFooter className="p-2 space-y-2">
+            <div className="group-data-[collapsible=icon]:hidden">
+                {renderSubscriptionButton()}
+            </div>
+
             {isUserLoading ? (
               <div className="flex items-center gap-2 p-2">
                 <div className="h-7 w-7 rounded-full bg-muted animate-pulse" />
@@ -239,7 +346,7 @@ function HomePageContent() {
                       </Avatar>
                       <div className="text-left group-data-[collapsible=icon]:hidden">
                         <p className="text-xs font-medium truncate">{user.displayName || 'User'}</p>
-                        <p className="text-xs text-muted-foreground truncate">{getPlanLabel(profile.plan)}</p>
+                        <p className="text-xs text-muted-foreground truncate">{getPlanLabel(plan)}</p>
                       </div>
                   </Button>
                 </DropdownMenuTrigger>
