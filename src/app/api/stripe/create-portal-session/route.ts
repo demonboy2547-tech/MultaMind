@@ -5,11 +5,13 @@ import { headers } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import * as admin from 'firebase-admin';
 import Stripe from 'stripe';
+import { firebaseConfig } from '@/firebase/config';
 
 // Initialize Firebase Admin SDK if not already initialized
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.applicationDefault(),
+    projectId: firebaseConfig.projectId, // Explicitly set the project ID
   });
 }
 const db = admin.firestore();
@@ -64,8 +66,8 @@ export async function POST(req: NextRequest) {
 
   } catch (error: any) {
     console.error('Error creating portal session:', error);
-    if (error.code === 'auth/id-token-expired' || error.code === 'auth/argument-error') {
-        return NextResponse.json({ error: 'Unauthorized: Invalid token' }, { status: 401 });
+    if (error.code === 'auth/id-token-expired' || error.code === 'auth/argument-error' || error.code === 'auth/invalid-user-token') {
+        return NextResponse.json({ error: `Unauthorized: Invalid token. ${error.message}` }, { status: 401 });
     }
     return NextResponse.json({ error: `Internal Server Error: ${error.message}` }, { status: 500 });
   }

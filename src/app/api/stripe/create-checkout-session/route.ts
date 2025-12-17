@@ -6,11 +6,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as admin from 'firebase-admin';
 import Stripe from 'stripe';
 import { getProPriceIds } from '@/lib/stripe/pricing';
+import { firebaseConfig } from '@/firebase/config';
 
 // Ensure Stripe and Firebase are initialized only once
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.applicationDefault(),
+    projectId: firebaseConfig.projectId, // Explicitly set the project ID
   });
 }
 const db = admin.firestore();
