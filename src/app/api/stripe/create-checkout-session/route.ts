@@ -5,6 +5,7 @@ import { headers } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import * as admin from 'firebase-admin';
 import Stripe from 'stripe';
+import { getProPriceIds } from '@/lib/stripe/pricing';
 
 // Initialize Firebase Admin SDK if not already initialized
 if (!admin.apps.length) {
@@ -69,10 +70,15 @@ export async function POST(req: NextRequest) {
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     const { uid, email } = decodedToken;
 
-    const { priceId, quantity = 1 } = await req.json();
+    const { priceId } = await req.json();
 
     if (!priceId) {
         return NextResponse.json({ error: 'Price ID is required' }, { status: 400 });
+    }
+    
+    const proPriceIds = getProPriceIds();
+    if (priceId !== proPriceIds.monthly && priceId !== proPriceIds.yearly) {
+        return NextResponse.json({ error: 'Invalid Price ID provided' }, { status: 400 });
     }
 
     // 2. Get or create a Stripe customer
@@ -86,13 +92,12 @@ export async function POST(req: NextRequest) {
       line_items: [
         {
           price: priceId,
-          quantity: quantity,
+          quantity: 1,
         },
       ],
       mode: 'subscription',
-      success_url: `${APP_URL}/?session_id={CHECKOUT_SESSION_ID}`, // Redirect to home page on success
-      cancel_url: `${APP_URL}/`, // Redirect to home page on cancel
-      // Pass the user's UID to the webhook via metadata
+      success_url: `${APP_URL}/?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${APP_URL}/`,
       client_reference_id: uid,
       subscription_data: {
         metadata: {

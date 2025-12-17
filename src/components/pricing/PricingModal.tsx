@@ -47,7 +47,7 @@ export default function PricingModal({ isOpen, onClose, onCheckout, isLoading, i
                 <DialogHeader>
                     <DialogTitle className="text-center text-2xl">Upgrade to Pro</DialogTitle>
                      <DialogDescription className="text-center">
-                        Select a plan to unlock premium features.
+                        Unlock premium features with our monthly plan.
                     </DialogDescription>
                 </DialogHeader>
 
