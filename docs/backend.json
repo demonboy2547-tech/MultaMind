@@ -21,14 +21,17 @@
           "description": "The user's subscription plan."
         },
         "planStatus": {
-            "type": "string",
-            "enum": ["active", "canceled", "past_due"],
-            "description": "The current status of the user's subscription."
+          "type": "string",
+          "enum": ["active", "trialing", "past_due", "canceled", "incomplete", "incomplete_expired", "unpaid"],
+          "description": "The current status of the user's subscription from Stripe."
         },
-        "billingInterval": {
+        "stripeCustomerId": {
             "type": "string",
-            "enum": ["monthly", "yearly"],
-            "description": "The billing frequency for the subscription."
+            "description": "The user's Stripe Customer ID."
+        },
+        "stripeSubscriptionId": {
+            "type": "string",
+            "description": "The user's Stripe Subscription ID."
         },
         "currentPeriodEnd": {
             "type": "string",
@@ -38,15 +41,6 @@
         "cancelAtPeriodEnd": {
             "type": "boolean",
             "description": "If true, the subscription will be canceled at the end of the current period."
-        },
-        "stripeCustomerId": {
-            "type": "string",
-            "description": "The user's Stripe Customer ID."
-        },
-        "proUntil": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp indicating when the pro plan benefits expire."
         }
       },
       "required": [

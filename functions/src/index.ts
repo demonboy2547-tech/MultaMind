@@ -8,44 +8,31 @@ admin.initializeApp();
 const db = admin.firestore();
 
 // It's safer to get these from environment variables
-const stripe = new Stripe(functions.config().stripe.secret, {
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+if (!stripeSecretKey) {
+  console.error("Stripe secret key is not set. Set STRIPE_SECRET_KEY environment variable.");
+  throw new Error("Stripe secret key is not configured.");
+}
+const stripe = new Stripe(stripeSecretKey, {
   apiVersion: '2024-06-20',
 });
-const STRIPE_WEBHOOK_SECRET = functions.config().stripe.webhook_secret;
+
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
+if (!STRIPE_WEBHOOK_SECRET) {
+    console.error("Stripe webhook secret is not set. Set STRIPE_WEBHOOK_SECRET environment variable.");
+    throw new Error("Stripe webhook secret is not configured.");
+}
 
 /**
- * Retrieves a Stripe customer ID for a given Firebase user UID.
- * If no customer ID exists, it creates a new Stripe customer.
- */
-const getOrCreateCustomer = async (userId: string, email: string | null) => {
-  const userRef = db.collection('users').doc(userId);
-  const userSnapshot = await userRef.get();
-  const userData = userSnapshot.data();
-
-  if (userData?.stripeCustomerId) {
-    return userData.stripeCustomerId;
-  }
-
-  const customer = await stripe.customers.create({
-    email: email ?? undefined,
-    metadata: {
-      firebaseUID: userId,
-    },
-  });
-
-  await userRef.update({ stripeCustomerId: customer.id });
-  return customer.id;
-};
-
-/**
- * Syncs subscription data from Stripe to the user's Firestore document.
+ * Syncs subscription data from a Stripe Subscription object to the user's Firestore document.
  */
 const syncSubscriptionToFirestore = async (subscription: Stripe.Subscription) => {
   const customerId = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id;
   
-  // Get user from client_reference_id on the checkout session if available
+  // Get user from subscription metadata if available
   let userId = subscription.metadata.firebaseUID;
 
+  // Fallback to querying the database by stripeCustomerId
   if (!userId) {
       const userQuery = await db.collection('users').where('stripeCustomerId', '==', customerId).limit(1).get();
       if (!userQuery.empty) {
@@ -59,71 +46,55 @@ const syncSubscriptionToFirestore = async (subscription: Stripe.Subscription) =>
   }
 
   const userRef = db.collection('users').doc(userId);
-
-  const plan = subscription.items.data[0].price.recurring?.interval === 'year' ? 'pro' : 'pro'; // Assuming both are "pro"
-  const billingInterval = subscription.items.data[0].price.recurring?.interval ?? null;
+  
+  const isActive = subscription.status === 'active' || subscription.status === 'trialing';
 
   const dataToUpdate = {
-    plan: plan,
+    plan: isActive ? 'pro' : 'standard',
+    stripeSubscriptionId: subscription.id,
+    stripeCustomerId: customerId,
     planStatus: subscription.status,
-    billingInterval: billingInterval,
     currentPeriodEnd: admin.firestore.Timestamp.fromMillis(subscription.current_period_end * 1000),
     cancelAtPeriodEnd: subscription.cancel_at_period_end,
-    proUntil: null, // Reset grace period on successful update
   };
 
   functions.logger.log(`Syncing subscription ${subscription.id} for user ${userId}`, dataToUpdate);
-  await userRef.update(dataToUpdate);
+  await userRef.set(dataToUpdate, { merge: true });
 };
 
 /**
- * Handles the 'checkout.session.completed' event.
+ * Handles the 'checkout.session.completed' event. This is the primary event
+ * for creating a new subscription.
  */
 const handleCheckoutCompleted = async (session: Stripe.Checkout.Session) => {
   const userId = session.client_reference_id;
   const customerId = session.customer;
+  const subscriptionId = session.subscription;
 
   if (!userId) {
-    functions.logger.error('Checkout session completed without a user ID.', { sessionId: session.id });
+    functions.logger.error('Checkout session completed without a user ID (client_reference_id).', { sessionId: session.id });
     return;
   }
 
-  // Ensure stripeCustomerId is set, especially for the first subscription
-  if (customerId) {
-      const userRef = db.collection('users').doc(userId);
-      await userRef.update({ stripeCustomerId: customerId });
+  if (!customerId) {
+    functions.logger.error('Checkout session completed without a customer ID.', { sessionId: session.id });
+    return;
   }
-
-  if (!session.subscription) {
+  
+  // Ensure stripeCustomerId is set on the user record, as this might be the first time.
+  const userRef = db.collection('users').doc(userId);
+  await userRef.set({ stripeCustomerId: customerId }, { merge: true });
+  
+  if (!subscriptionId) {
     functions.logger.error('Checkout session completed without a subscription ID.', { sessionId: session.id });
     return;
   }
-  const subscription = await stripe.subscriptions.retrieve(session.subscription as string);
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId as string);
   await syncSubscriptionToFirestore(subscription);
 };
 
-
 /**
- * Handles the 'invoice.payment_failed' event.
- */
-const handlePaymentFailed = async (invoice: Stripe.Invoice) => {
-  const customerId = typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id;
-  if (!customerId) return;
-
-  const userQuery = await db.collection('users').where('stripeCustomerId', '==', customerId).limit(1).get();
-  if (userQuery.empty) return;
-
-  const userRef = userQuery.docs[0].ref;
-  const proUntil = admin.firestore.Timestamp.fromMillis(Date.now() + 48 * 60 * 60 * 1000); // 48 hours from now
-
-  await userRef.update({
-    planStatus: 'past_due',
-    proUntil: proUntil,
-  });
-};
-
-/**
- * Handles subscription cancellation or grace period expiry by downgrading the user.
+ * Handles subscription cancellation by downgrading the user's plan.
  */
 const handleSubscriptionEnded = async (subscription: Stripe.Subscription) => {
     const customerId = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id;
@@ -143,17 +114,15 @@ const handleSubscriptionEnded = async (subscription: Stripe.Subscription) => {
     
     const userRef = db.collection('users').doc(userId);
 
-    // Downgrade user to the "standard" plan
-    await userRef.update({
+    // Downgrade user to the "standard" plan and clear subscription-specific fields
+    await userRef.set({
         plan: 'standard',
-        planStatus: 'canceled',
-        billingInterval: null,
+        planStatus: 'canceled', // or subscription.status which would be 'canceled'
+        stripeSubscriptionId: null,
         currentPeriodEnd: null,
         cancelAtPeriodEnd: false,
-        proUntil: null,
-    });
+    }, { merge: true });
 }
-
 
 /**
  * A Firebase Cloud Function to handle Stripe webhooks.
@@ -163,7 +132,6 @@ const handleSubscriptionEnded = async (subscription: Stripe.Subscription) => {
  * webhook signatures.
  */
 export const stripeWebhook = functions.https.onRequest(async (request, response) => {
-  // Get the Stripe signature from the request headers
   const sig = request.headers['stripe-signature'];
 
   if (!sig) {
@@ -171,19 +139,12 @@ export const stripeWebhook = functions.https.onRequest(async (request, response)
     response.status(400).send('Webhook Error: No signature present.');
     return;
   }
-
-  if (!STRIPE_WEBHOOK_SECRET) {
-    functions.logger.error('Stripe webhook secret is not configured.');
-    response.status(500).send('Server Error: Webhook secret not configured.');
-    return;
-  }
-
+  
   let event: Stripe.Event;
 
   try {
     // The rawBody is essential for verification
-    const rawBody = request.rawBody;
-    event = stripe.webhooks.constructEvent(rawBody, sig, STRIPE_WEBHOOK_SECRET);
+    event = stripe.webhooks.constructEvent(request.rawBody, sig, STRIPE_WEBHOOK_SECRET);
   } catch (err: any) {
     functions.logger.error('Stripe webhook signature verification failed.', { error: err.message });
     response.status(400).send(`Webhook Error: ${err.message}`);
@@ -196,17 +157,15 @@ export const stripeWebhook = functions.https.onRequest(async (request, response)
       case 'checkout.session.completed':
         await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
         break;
+      case 'customer.subscription.created':
       case 'customer.subscription.updated':
         await syncSubscriptionToFirestore(event.data.object as Stripe.Subscription);
         break;
-      case 'customer.subscription.deleted':
+      case 'customer.subscription.deleted': // Occurs when the subscription is definitively canceled
         await handleSubscriptionEnded(event.data.object as Stripe.Subscription);
         break;
-      case 'invoice.payment_failed':
-        await handlePaymentFailed(event.data.object as Stripe.Invoice);
-        break;
       default:
-        functions.logger.warn(`Unhandled Stripe event type: ${event.type}`);
+        functions.logger.log(`Unhandled Stripe event type: ${event.type}`);
     }
   } catch (error) {
       functions.logger.error('Error handling Stripe event:', { eventType: event.type, error });
