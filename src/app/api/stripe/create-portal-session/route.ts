@@ -2,7 +2,7 @@
 'use server';
 
 import { headers } from 'next/headers';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getAdminApp, getAdminAuth } from '@/lib/firebaseAdmin';
 import Stripe from 'stripe';
 
@@ -16,7 +16,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
 
 const APP_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:9002';
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   const headersList = headers();
   const authorization = headersList.get('Authorization');
 

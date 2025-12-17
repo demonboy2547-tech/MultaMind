@@ -2,7 +2,7 @@
 'use server';
 
 import { headers } from 'next/headers';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { getProPriceIds } from '@/lib/stripe/pricing';
 import { getAdminAuth } from '@/lib/firebaseAdmin';
@@ -71,7 +71,7 @@ const getOrCreateCustomer = async (userId: string, email: string | null): Promis
 };
 
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
     // 1. Initialize Stripe and validate environment variables
     initializeStripeAndCheckEnv();
