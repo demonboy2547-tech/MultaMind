@@ -229,18 +229,26 @@ function HomePageContent() {
           },
           body: Object.keys(bodyPayload).length > 0 ? JSON.stringify(bodyPayload) : undefined,
       });
+      
+      const responseText = await response.text();
+      console.log('Checkout Response Text (first 300 chars):', responseText.slice(0, 300));
 
-      const data = await response.json();
 
       if (!response.ok) {
-          throw new Error(data.error || 'Something went wrong.');
+        throw new Error(`Server responded with ${response.status}: ${responseText.slice(0, 300)}`);
       }
 
-      if (data.url) {
-          window.location.href = data.url;
-      } else {
-          throw new Error('Could not get redirect URL from server.');
+      try {
+        const data = JSON.parse(responseText);
+        if (data.url) {
+            window.location.href = data.url;
+        } else {
+            throw new Error('Could not get redirect URL from server.');
+        }
+      } catch (jsonError) {
+         throw new Error('Failed to parse server response as JSON.');
       }
+
 
     } catch (error: any) {
         console.error('Subscription action failed:', error);
