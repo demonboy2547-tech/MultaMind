@@ -3,4 +3,4 @@ import {
   callGeminiAgent,
   callMultaAgent,
   type AgentMessage,
-} from '@/lib/agents';
+} from '@/ai/flows/multamind-flow';
