@@ -7,7 +7,7 @@ import * as admin from 'firebase-admin';
 import Stripe from 'stripe';
 import { getProPriceIds } from '@/lib/stripe/pricing';
 
-// Initialize Firebase Admin SDK if not already initialized
+// Ensure Stripe and Firebase are initialized only once
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.applicationDefault(),
@@ -15,23 +15,42 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
-// Ensure the secret key is defined
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error('STRIPE_SECRET_KEY is not set in environment variables');
+// A single place to hold the Stripe instance
+let stripe: Stripe;
+
+/**
+ * Validates required environment variables and initializes Stripe.
+ * Throws an error if any required variable is missing.
+ */
+function initializeStripeAndCheckEnv() {
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    const proPriceIds = getProPriceIds();
+    const appUrl = process.env.NEXT_PUBLIC_SITE_URL;
+
+    if (!stripeSecretKey) {
+        throw new Error('Stripe secret key is not set in environment variables.');
+    }
+    if (!proPriceIds.monthly && !proPriceIds.yearly) {
+        throw new Error('Stripe Pro Price IDs are not set in environment variables.');
+    }
+    if (!appUrl) {
+        throw new Error('NEXT_PUBLIC_SITE_URL is not set in environment variables.');
+    }
+
+    // Initialize Stripe only if it hasn't been already
+    if (!stripe) {
+        stripe = new Stripe(stripeSecretKey, {
+            apiVersion: '2024-06-20',
+        });
+    }
 }
 
-// Initialize Stripe
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2024-06-20',
-});
-
-const APP_URL = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:9002';
 
 /**
  * Retrieves a Stripe customer ID for a given Firebase user UID.
  * If no customer ID exists, it creates a new Stripe customer and saves the ID.
  */
-const getOrCreateCustomer = async (userId: string, email: string | null) => {
+const getOrCreateCustomer = async (userId: string, email: string | null): Promise<string> => {
   const userRef = db.collection('users').doc(userId);
   const userSnapshot = await userRef.get();
   const userData = userSnapshot.data();
@@ -56,22 +75,22 @@ const getOrCreateCustomer = async (userId: string, email: string | null) => {
 
 
 export async function POST(req: NextRequest) {
-  const headersList = headers();
-  const authorization = headersList.get('Authorization');
-
-  if (!authorization || !authorization.startsWith('Bearer ')) {
-    return NextResponse.json({ error: 'Unauthorized: No token provided' }, { status: 401 });
-  }
-
-  const idToken = authorization.split('Bearer ')[1];
-
   try {
-    // 1. Verify the Firebase ID token
+    // 1. Initialize Stripe and validate environment variables
+    initializeStripeAndCheckEnv();
+
+    // 2. Authenticate the user with Firebase Admin SDK
+    const headersList = headers();
+    const authorization = headersList.get('Authorization');
+    if (!authorization || !authorization.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized: No token provided' }, { status: 401 });
+    }
+    const idToken = authorization.split('Bearer ')[1];
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     const { uid, email } = decodedToken;
 
+    // 3. Validate the incoming request body
     const { priceId } = await req.json();
-
     if (!priceId) {
         return NextResponse.json({ error: 'Price ID is required' }, { status: 400 });
     }
@@ -81,10 +100,12 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Invalid Price ID provided' }, { status: 400 });
     }
 
-    // 2. Get or create a Stripe customer
+    // 4. Get or create a Stripe customer
     const customerId = await getOrCreateCustomer(uid, email || null);
+    
+    const APP_URL = process.env.NEXT_PUBLIC_SITE_URL!;
 
-    // 3. Create a Stripe Checkout session
+    // 5. Create a Stripe Checkout session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       billing_address_collection: 'required',
@@ -98,26 +119,25 @@ export async function POST(req: NextRequest) {
       mode: 'subscription',
       success_url: `${APP_URL}/?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${APP_URL}/`,
-      client_reference_id: uid,
+      client_reference_id: uid, // Pass Firebase UID to pre-fill customer details if needed
       subscription_data: {
         metadata: {
-            firebaseUID: uid,
+            firebaseUID: uid, // Crucial for webhook to link subscription to user
         }
       }
     });
 
-    // 4. Return the session URL
+    // 6. Return the session URL on success
     if (session.url) {
       return NextResponse.json({ url: session.url }, { status: 200 });
     } else {
+      // This case should ideally not happen if Stripe session creation is successful
       return NextResponse.json({ error: 'Failed to create checkout session' }, { status: 500 });
     }
 
   } catch (error: any) {
     console.error('Error creating checkout session:', error);
-    if (error.code === 'auth/id-token-expired' || error.code === 'auth/argument-error') {
-        return NextResponse.json({ error: 'Unauthorized: Invalid token' }, { status: 401 });
-    }
+    // Generic error handler for any failure in the try block
     return NextResponse.json({ error: `Internal Server Error: ${error.message}` }, { status: 500 });
   }
 }
