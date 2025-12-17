@@ -3,25 +3,13 @@
 
 import { headers } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
-import * as admin from 'firebase-admin';
+import { getAdminApp, getAdminAuth } from '@/lib/firebaseAdmin';
 import Stripe from 'stripe';
-import { firebaseConfig } from '@/firebase/config';
 
-// Initialize Firebase Admin SDK if not already initialized
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
-    projectId: firebaseConfig.projectId, // Explicitly set the project ID
-  });
-}
-const db = admin.firestore();
-
-// Ensure the secret key is defined
+// Initialize Stripe
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error('STRIPE_SECRET_KEY is not set in environment variables');
 }
-
-// Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: '2024-06-20',
 });
@@ -39,11 +27,14 @@ export async function POST(req: NextRequest) {
   const idToken = authorization.split('Bearer ')[1];
 
   try {
-    // 1. Verify the Firebase ID token
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    // 1. Verify the Firebase ID token using the admin module
+    const adminAuth = getAdminAuth();
+    const decodedToken = await adminAuth.verifyIdToken(idToken);
     const { uid } = decodedToken;
 
     // 2. Retrieve the user's stripeCustomerId from Firestore
+    const adminApp = getAdminApp();
+    const db = adminApp.firestore();
     const userRef = db.collection('users').doc(uid);
     const userSnapshot = await userRef.get();
     const userData = userSnapshot.data();

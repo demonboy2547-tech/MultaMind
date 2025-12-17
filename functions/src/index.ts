@@ -49,7 +49,7 @@ const syncSubscriptionToFirestore = async (subscription: Stripe.Subscription) =>
   
   const isActive = subscription.status === 'active' || subscription.status === 'trialing';
 
-  const dataToUpdate = {
+  const dataToUpdate: any = {
     plan: isActive ? 'pro' : 'standard',
     stripeSubscriptionId: subscription.id,
     stripeCustomerId: customerId,
@@ -89,6 +89,8 @@ const handleCheckoutCompleted = async (session: Stripe.Checkout.Session) => {
     functions.logger.error('Checkout session completed without a subscription ID.', { sessionId: session.id });
     return;
   }
+
+  // Retrieve the full subscription object to get all details
   const subscription = await stripe.subscriptions.retrieve(subscriptionId as string);
   await syncSubscriptionToFirestore(subscription);
 };
