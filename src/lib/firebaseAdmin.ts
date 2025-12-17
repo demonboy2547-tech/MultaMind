@@ -31,6 +31,6 @@ export const getAdminApp = () => {
     return initializeAdminApp();
 }
 
-export const getAdminAuth = () => {
+export const getAdminAuth = async () => {
     return getAuth(initializeAdminApp());
 };

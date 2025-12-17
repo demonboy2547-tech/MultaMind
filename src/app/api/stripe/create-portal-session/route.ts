@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
 
   try {
     // 1. Verify the Firebase ID token using the admin module
-    const adminAuth = getAdminAuth();
+    const adminAuth = await getAdminAuth();
     const decodedToken = await adminAuth.verifyIdToken(idToken);
     const { uid } = decodedToken;
 

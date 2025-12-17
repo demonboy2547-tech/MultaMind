@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
     }
     const idToken = authorization.split('Bearer ')[1];
     
-    const adminAuth = getAdminAuth();
+    const adminAuth = await getAdminAuth();
     const decodedToken = await adminAuth.verifyIdToken(idToken);
     const { uid, email } = decodedToken;
 
