@@ -1,6 +1,3 @@
-
-'use server';
-
 import type { ChatMessage } from './types';
 import { callGeminiAgent, callGptAgent } from './agents';
 

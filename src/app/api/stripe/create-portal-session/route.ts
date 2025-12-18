@@ -1,6 +1,3 @@
-
-'use server';
-
 import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { getAdminApp, getAdminAuth } from '@/lib/firebaseAdmin';
